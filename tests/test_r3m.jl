@@ -39,6 +39,31 @@ function test_r3m()
         println("Generator $i: ", reshape(vector_input, 3, 2))
     end
 
+
+    # Now check the generators of the 2-rank tensors
+    tensor_input = rand(6, 6)
+    generators = AtomicSymmetries.get_matrix_generators(r3m_group)
+    println("This group has $(length(generators)) generators for the matrices")
+    for i in 1:length(generators)
+        AtomicSymmetries.get_matrix_generator!(tensor_input, generators[i], r3m_group)
+        println("Generator $i: ", tensor_input)
+    end
+
+    # Try to symmetrize a dynamical matrix and check the eigenvectors
+    tensor_input = rand(6, 6)
+    second_input = copy(tensor_input)
+    r3m_group.symmetrize_fc!(tensor_input)
+
+    # Now perform the symmetrization projecting into the generators
+    coeffs = zeros(length(generators))
+    AtomicSymmetries.get_coefficients_from_fc!(coeffs, second_input, generators, r3m_group)
+    AtomicSymmetries.get_fc_from_generators!(second_input, generators, coeffs, r3m_group)
+
+    @show tensor_input
+    @show second_input
+
+    # Compare the two results
+    @test maximum(abs.(tensor_input .- second_input)) < 1e-10
 end
 
 
