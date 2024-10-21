@@ -30,5 +30,25 @@ function (asr::ASRVectorConstraint!)(tensor::AbstractVector)
     end
 end
 
+# Apply the ASR constraint to a rank-2 tensor
+struct ASRMatrixConstraint!
+    dimension::Int
+end
+function (asr::ASRMatrixConstraint!)(matrix :: AbstractMatrix)
+    nat = size(matrix, 1) ÷ asr.dimension
+    proj = zeros(eltype(matrix), asr.dimension * nat)
+    proj_view = reshape(proj, asr.dimension, nat)
+    copy_mat = copy(matrix)
+    for t in 1:asr.dimension
+        # Get the projector
+        proj .= 0
+        @views proj_view[t, :] .= 1.0 / √(asr.dimension * nat)
+
+        # subtract the projector
+        matrix_projected = proj' * matrix * proj
+        matrix .-= matrix_projected * (proj * proj')
+    end
+end
+
 
 
