@@ -30,6 +30,8 @@ mutable struct Symmetries{T}
     enforce_noninteracting :: Vector{Int}
 end
 get_nsymmetries(sym :: Symmetries) = length(sym.symmetries)
+get_dimensions(sym :: Symmetries) = sym.dimension
+get_n_atoms(sym :: Symmetries) = sym.n_particles
 
 
 # Override the Base.isempty function to check if the Symmetries object is empty

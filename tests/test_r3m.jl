@@ -19,12 +19,26 @@ function test_r3m()
 
 
     # Now check if we constrain the symmetry we get a null vector
-    vector_input = rand(3)
+    vector_input = rand(6)
     @show vector_input
     r3m_group.symmetrize_centroid!(vector_input)
     @show vector_input
 
-    @test maximum(abs.(vector_input .- (sum(vector_input)/3))) < 1e-12
+    for i in 1:2
+        @test maximum(abs.(vector_input[3*(i-1)+1:3*i] .- (sum(vector_input[3*(i-1)+1:3*i])/3))) < 1e-12
+    end
+
+
+    # Extract the generators of this group
+    generators = AtomicSymmetries.get_vector_generators(r3m_group)
+                                                       
+
+    println("This group has $(length(generators)) generators for the vectors")
+    for i in 1:length(generators)
+        AtomicSymmetries.get_vector_generator!(vector_input, generators[i], r3m_group)
+        println("Generator $i: ", reshape(vector_input, 3, 2))
+    end
+
 end
 
 
