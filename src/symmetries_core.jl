@@ -29,6 +29,7 @@ mutable struct Symmetries{T}
     symmetrize_centroid! :: Union{Function, Nothing}
     enforce_noninteracting :: Vector{Int}
 end
+get_nsymmetries(sym :: Symmetries) = length(sym.symmetries)
 
 
 # Override the Base.isempty function to check if the Symmetries object is empty
@@ -72,7 +73,7 @@ function update_symmetry_functions!(sym :: Symmetries{T}) where {T}
         my_centroid = similar(centroid)
         my_centroid .= 0.0
 
-        for i in 1:length(sym.symmetries)
+        for i in 1:get_nsymmetries(sym)
             symmat = sym.symmetries[i]
             irt = sym.irt[i]
             apply_sym_centroid!(my_centroid, centroid, symmat, sym.dimension, irt)

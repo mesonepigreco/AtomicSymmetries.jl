@@ -9,14 +9,12 @@ function test_bcc()
     positions = [0.0 0.5
                  0.0 0.5
                  0.0 0.5]
-    @show eachcol(positions)
-    println("LENGTH: ", length(eachcol(positions)))
-
     types = [1, 1]
 
 
     # Get the symmetry group
     bcc_group = get_symmetry_group_from_spglib(positions, cell, types)
+    println("Number of symmetries: ", get_nsymmetries(bcc_group))
 
 
     # Now check if we constrain the symmetry we get a null vector
