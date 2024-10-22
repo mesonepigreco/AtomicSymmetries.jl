@@ -18,7 +18,7 @@ function test_bcc()
 
 
     # Now check if we constrain the symmetry we get a null vector
-    vector_input = rand(3)
+    vector_input = rand(6)
     @show vector_input
     bcc_group.symmetrize_centroid!(vector_input)
     @show vector_input

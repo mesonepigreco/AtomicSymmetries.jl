@@ -32,6 +32,7 @@ end
 get_nsymmetries(sym :: Symmetries) = length(sym.symmetries)
 get_dimensions(sym :: Symmetries) = sym.dimension
 get_n_atoms(sym :: Symmetries) = sym.n_particles
+Base.length(sym :: Symmetries) = get_nsymmetries(sym)
 
 
 # Override the Base.isempty function to check if the Symmetries object is empty
@@ -93,9 +94,9 @@ function update_symmetry_functions!(sym :: Symmetries{T}) where {T}
     sym.symmetrize_centroid! = sym_centroid!
 
     # Update irt (index of the representative of the transformation)
-    if sym.n_particles > 0
-        update_irt!(sym)
-    end
+    # if sym.n_particles > 0
+    #    update_irt!(sym)
+    # end
 end    
 
 
@@ -520,8 +521,13 @@ function get_irt!(irt, coords, matrix, translation)
     nat = size(coords, 2)
     ndims = size(coords, 1)
 
+    # debugvalue = sum(translation.^2) > 1e-8
+    debugvalue = false
+    dist = 0
+
     for i in 1:nat 
         min_dist = 1000
+        min_j = 1
         for j in 1:nat
             nval = 0
             for k in 1:ndims
@@ -529,10 +535,20 @@ function get_irt!(irt, coords, matrix, translation)
                 nval += (dist - round(dist))^2
             end
 
+            if debugvalue
+                println("i: $i, j: $j, distance: $nval, notransl: $(norm(new_coords[:, i] - coords[:, j])); min_dist: $min_dist")
+
+            end
+
             if nval < min_dist
-                irt[j] = i
+                min_j = j
                 min_dist = nval
             end
+
+            if min_dist < 1e-8
+                break
+            end
         end
+        irt[min_j] = i
     end
 end

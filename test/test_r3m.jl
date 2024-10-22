@@ -9,7 +9,7 @@ function test_r3m()
     positions = [0.0 0.4
                  0.0 0.4
                  0.0 0.4]
-    types = [1, 2]
+    types = [1, 1]
 
 
     # Get the symmetry group
