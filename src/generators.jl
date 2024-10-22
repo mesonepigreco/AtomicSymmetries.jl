@@ -109,6 +109,7 @@ function get_matrix_generators(
         normvalue = norm(generator)
         if normvalue > 1e-8
             generator ./= normvalue
+            @debug "Found a generator in $i"
 
             # Check if the generator is independent from the others
             independent = true
