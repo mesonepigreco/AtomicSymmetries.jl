@@ -49,7 +49,7 @@ symmetrize_fc! and symmetrize_centroid! functions.
 Note that the symmetries must be set before calling this function.
 """
 function update_symmetry_functions!(sym :: Symmetries{T}) where {T}
-    function sym_fc!(fc :: Matrix{U}) where {U}
+    function sym_fc!(fc :: AbstractMatrix{U}) where {U}
         my_fc = similar(fc)
         my_fc .= 0.0
 
@@ -71,7 +71,7 @@ function update_symmetry_functions!(sym :: Symmetries{T}) where {T}
         end
     end
 
-    function sym_centroid!(centroid :: Vector{U}) where {U}
+    function sym_centroid!(centroid :: AbstractVector{U}) where {U}
         my_centroid = similar(centroid)
         my_centroid .= 0.0
 
