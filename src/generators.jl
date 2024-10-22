@@ -105,6 +105,8 @@ function get_matrix_generators(
             func_apply_constraints! = func_apply_constraints!,
             normalize=false)
 
+        @debug "processing $i generator"
+
         # Add the generator to the acceptable ones
         normvalue = norm(generator)
         if normvalue > 1e-8
