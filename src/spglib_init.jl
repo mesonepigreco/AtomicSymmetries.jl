@@ -20,15 +20,19 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
     @assert ndim == 3 "Only 3D systems are supported for SPGLIB symmetry groups."
 
     # Build the SPGLIB cell object
+    @debug "Building the SPGLIB cell object"
     cell = Cell(cell, positions, types)
     
     # Get the symmetry operations
+    @debug "Getting the symmetry operations"
     R, T = Spglib.get_symmetry(cell, symprec)
 
     # Create the new symmetry group
+    @debug "Creating the symmetry group"
     sym_group = get_identity_symmetry_group(type; dims=ndim, n_atoms=nat)
 
     # Add the symmetry operations excluding the first identity
+    @debug "Adding the symmetry operations"
     for i in 2:length(R)
         irt = zeros(Int, nat)
         get_irt!(irt, positions, R[i], T[i])
@@ -37,6 +41,7 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
         add_symmetry!(sym_group, R[i], update=false; irt=irt)
     end
 
+    @debug "Updating the symmetry functions"
     update_symmetry_functions!(sym_group)
 
     return sym_group

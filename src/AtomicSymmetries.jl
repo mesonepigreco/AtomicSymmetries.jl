@@ -11,6 +11,8 @@ include("asr.jl")
 
 export get_symmetry_group_from_spglib,
        get_nsymmetries,
-       ASRVectorConstraint!
+       ASRVectorConstraint!,
+       ASRMatrixConstraint!
+
 
 end # module AtomicSymmetries
