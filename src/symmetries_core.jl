@@ -156,7 +156,7 @@ Apply the symmetry ``sym`` to the force constant matrix ``fc`` and add the resul
 
 irt indicates how the symmetry maps particle into each other.
 """
-function apply_sym_fc!(result :: Matrix{T}, fc :: Matrix{T}, sym :: Matrix{U}, dimensions :: Int, irt :: Vector{Int}) where {T, U}
+function apply_sym_fc!(result :: AbstractMatrix{T}, fc :: AbstractMatrix{T}, sym :: AbstractMatrix{U}, dimensions :: Int, irt :: AbstractVector{Int}) where {T, U}
     # Use mul! to avoid allocating memory
     n_atoms = size(fc, 1) ÷ dimensions
 
@@ -179,7 +179,7 @@ Apply the symmetry ``sym`` to the centroid vector ``centroid`` and add the resul
 
 irt indicates how the symmetry maps particle into each other.
 """
-function apply_sym_centroid!(result :: Vector{T}, centroid :: Vector{T}, sym :: Matrix{U}, dimensions :: Int, irt :: Vector{Int}) where {T,U}
+function apply_sym_centroid!(result :: AbstractVector{T}, centroid :: AbstractVector{T}, sym :: AbstractMatrix{U}, dimensions :: Int, irt :: AbstractVector{Int}) where {T,U}
     # Use mul! to avoid allocating memory
     n_atoms = length(centroid) ÷ dimensions
     for i ∈ 1:n_atoms 
@@ -197,7 +197,7 @@ Apply the exchange symmetry to the force constant matrix or centroid vector.
 
 TODO: use the set_parameters! function to avoid allocating memory for exchange_symmetry
 """
-function apply_exchange_symmetry!(fc :: Matrix{T}, exchange_symmetry :: Vector{Int}, dims :: Int) where {T}
+function apply_exchange_symmetry!(fc :: AbstractMatrix{T}, exchange_symmetry :: AbstractVector{Int}, dims :: Int) where {T}
     fc_dim = size(fc, 1)
     work1 = zeros(T, (dims, dims))
     work2 = zeros(T, (dims, dims))
@@ -249,7 +249,7 @@ function apply_exchange_symmetry!(fc :: Matrix{T}, exchange_symmetry :: Vector{I
         push!(done_ids, exchange_symmetry[i])
     end
 end
-function apply_exchange_symmetry!(centroid :: Vector{T}, exchange_symmetry :: Vector{Int}, dims :: Int) where {T}
+function apply_exchange_symmetry!(centroid :: AbstractVector{T}, exchange_symmetry :: AbstractVector{Int}, dims :: Int) where {T}
     centroid_dim = length(centroid)
     work1 = zeros(T, dims)
 
@@ -288,7 +288,7 @@ end
 Enforce that the force constant matrix is zero for the off-diagonal elements among particles in ``list_of_particles``.
 This creates a noncorrelated wavefunction between the particles in the list.
 """ 
-function enforce_noninteracting!(fc :: Matrix{T}, list_of_particles :: Vector{Int}, dimension :: Int) where {T}
+function enforce_noninteracting!(fc :: AbstractMatrix{T}, list_of_particles :: AbstractVector{Int}, dimension :: Int) where {T}
     for i in list_of_particles
         for j in list_of_particles
             if i != j
