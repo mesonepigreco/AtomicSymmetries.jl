@@ -97,9 +97,9 @@ function get_matrix_generators(
         # skip the symmetric part
         i_index = (i-1) % n_modes + 1
         j_index = (i-1) ÷ n_modes + 1
-        # if i_index < j_index
-        #     continue
-        # end
+        if i_index < j_index
+            continue
+        end
 
         get_matrix_generator!(generator, i, symmetry_group;
             func_apply_constraints! = func_apply_constraints!,
@@ -222,11 +222,22 @@ end
 function get_matrix_generator!(generator :: AbstractMatrix{T}, generator_index:: Int, symmetry_group :: Symmetries{U};
     func_apply_constraints! =nothing,
     baseline_generator = nothing,
+    transpose=true,
     normalize=true) where {T, U}
 
     # Prepare the starting vector
     generator .= 0
-    generator[generator_index] = 1
+
+    # Prepare the transposed vector
+    n_modes = size(generator, 1)
+    if transpose
+        i_index = (generator_index-1) % n_modes + 1
+        j_index = (generator_index-1) ÷ n_modes + 1
+        generator[i_index, j_index] = 1
+        generator[j_index, i_index] = 1
+    else
+        generator[generator_index] = 1
+    end
 
     # Constrain manually the parameters indexed in constrained_parameters
     if func_apply_constraints! != nothing

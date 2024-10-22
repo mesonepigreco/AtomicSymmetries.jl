@@ -51,6 +51,7 @@ function test_r3m()
 
     # Try to symmetrize a dynamical matrix and check the eigenvectors
     tensor_input = rand(6, 6)
+    tensor_input .+= tensor_input'
     second_input = copy(tensor_input)
     r3m_group.symmetrize_fc!(tensor_input)
 
