@@ -110,7 +110,6 @@ function get_matrix_generators(
         normvalue = norm(generator)
         if normvalue > 1e-8
             generator ./= normvalue
-            @debug "Found a generator in $i"
 
             # Check if the generator is independent from the others
             independent = true
@@ -132,6 +131,7 @@ function get_matrix_generators(
             end
 
             if independent
+                @debug "Found a generator in $i"
                 push!(generators, i)
                 push!(old_vectors, copy(generator))
             end
@@ -298,16 +298,27 @@ end
 function get_fc_from_generators!(fc :: AbstractMatrix{T}, generators::AbstractVector{Int}, coefficients :: AbstractVector{T},
     symmetries :: Symmetries{U};
     func_apply_constraints! =nothing,
+    generator_type = nothing
     ) where {T, U}
 
     fc .= 0
-    generator = similar(fc)
+    if generator_type == nothing
+        generator_type = U
+    end
+    n1 = size(fc, 1)
+    n2 = size(fc, 2)
+    generator = zeros(generator_type, n1, n2)
 
     for i in 1:length(generators)
         get_matrix_generator!(generator, generators[i], symmetries;
                               func_apply_constraints! = func_apply_constraints!)
         
-        fc .+= coefficients[i] * generator
+        # Do it without allocating
+        for k in 1:n2
+            @simd for j in 1:n1
+                fc[j, k] += coefficients[i] * generator[j, k]
+            end
+        end
     end
 
     if func_apply_constraints! != nothing
