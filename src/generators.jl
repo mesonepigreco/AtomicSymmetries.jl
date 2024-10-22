@@ -115,17 +115,18 @@ function get_matrix_generators(
             # Check if the generator is independent from the others
             independent = true
             for j in 1: length(old_vectors)
-                if norm(generator - old_vectors[j]) < 1e-8
+                scalar = reshape(generator, :)' * reshape(old_vectors[j], :)
+                if abs(abs(scalar) - 1) < 1e-8
                     independent = false
                     break
                 end
-
-                if sqrt(reshape(generator, :)' * reshape(old_vectors[j], :)) > 1e-4
+                
+                if sqrt(abs.(reshape(generator, :)' * reshape(old_vectors[j], :))) > 1e-4
                     println("Current $i generator: $(generator)")
                     println("Original norm:", normvalue)
                     println("Old generators:")
                     println(old_vectors)
-                    println("Linearly dependent with $j : $(sqrt(generator' * old_vectors[j]))")
+                    println("Linearly dependent with $j : $(sqrt(abs.(generator' * old_vectors[j])))")
                     throw("The generators are linearly dependent but not the same. This is not implemented yet.")
                 end
             end
