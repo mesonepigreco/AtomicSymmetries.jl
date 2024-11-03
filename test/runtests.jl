@@ -13,3 +13,6 @@ include("test_r3m.jl")
 include("test_spglib.jl")
 @testset "Spglib simple" test_load_spglib()
 @testset "Spglib supercell" test_symmetries_supercell()
+
+include("test_filter.jl")
+@testset "Filter" test_filter()
