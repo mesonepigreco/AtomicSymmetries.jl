@@ -3,6 +3,8 @@
 
 @doc raw"""
     get_symmetry_group_from_spglib(positions :: AbstractMatrix, cell :: AbstractMatrix, types :: Array{Int}; symprec :: Float64 = 1e-6)
+    get_symmetry_group_from_spglib(ase_atoms :: PyObject; symprec :: Float64 = 1e-6)
+
 
 Build a symmetry group from the spglib library.
 
@@ -12,6 +14,8 @@ Build a symmetry group from the spglib library.
 - `cell::AbstractMatrix`: The cell matrix with shape `(3, 3)`.
 - `types::Array{Int}`: The atomic types.
 - `symprec::Float64`: The symmetry precision.
+
+Alternatively, you can pass an ASE Atoms object.
 """
 function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell::AbstractMatrix{<:Real}, types::Vector{<:Int}; symprec::Float64 = 1e-6, type::Type = Float64) :: Symmetries
     nat = size(positions, 2)
@@ -46,5 +50,23 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
 
     return sym_group
 end
-
+# function get_symmetry_group_from_spglib(structure :: PyObject; type = Float64, kwargs...) :: Symmetries
+#     nat = length(structure.atoms)
+#     positions = zeros(type, 3, nat)
+#     cell = zeros(type, 3, 3)
+#     types = zeros(Int, nat)
+# 
+#     cell .= structure.cell'
+#     for  i in 1:nat
+#         positions[:, i] .= structure.positions[i, :]
+#         types[i] = structure.get_atomic_numbers()[i]
+#     end
+# 
+#     # Get the crystalline coordinates
+#     crystal_coords = zeros(type, 3, nat)
+#     get_crystal_coords!(crystal_coords, positions, cell)
+# 
+# 
+#     return get_symmetry_group_from_spglib(crystal_coords, cell, types; kwargs...)
+# end
 

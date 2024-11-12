@@ -4,6 +4,7 @@ authors = ["Lorenzo Monacelli <mesonepigreco@gmail.com>"]
 version = "0.1.0"
 
 [deps]
+Bumper = "8ce10254-0962-460f-a3d8-1f77fea1446e"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Spglib = "f761d5c5-86db-4880-b97f-9680a7cccfb5"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

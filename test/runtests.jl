@@ -16,3 +16,8 @@ include("test_spglib.jl")
 
 include("test_filter.jl")
 @testset "Filter" test_filter()
+
+@testset "Cart to Crystal" begin
+    include("test_crystal_cart.jl")
+    test_crystal_to_cart()
+end
