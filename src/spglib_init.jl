@@ -26,6 +26,8 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
     # Build the SPGLIB cell object
     @debug "Building the SPGLIB cell object"
     cell = Cell(cell, positions, types)
+
+    @show cell
     
     # Get the symmetry operations
     @debug "Getting the symmetry operations"
