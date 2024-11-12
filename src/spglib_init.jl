@@ -25,13 +25,11 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
 
     # Build the SPGLIB cell object
     @debug "Building the SPGLIB cell object"
-    cell = Cell(cell, positions, types)
-
-    @show cell
+    newcell = Cell(cell, positions, types)
     
     # Get the symmetry operations
     @debug "Getting the symmetry operations"
-    R, T = Spglib.get_symmetry(cell, symprec)
+    R, T = Spglib.get_symmetry(newcell, symprec)
 
     # Create the new symmetry group
     @debug "Creating the symmetry group"
