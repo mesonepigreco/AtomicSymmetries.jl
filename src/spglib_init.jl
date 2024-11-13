@@ -21,7 +21,7 @@ Optional arguments:
 
 Alternatively, you can pass an ASE Atoms object.
 """
-function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell::AbstractMatrix{<:Real}, types::Vector{<:Int}; kwargs...) :: Symmetries
+function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell::AbstractMatrix{<:Real}, types::Vector{<:Int};  symprec::Float64 = 1e-6, type::Type = Float64) :: Symmetries
     nat = size(positions, 2)
     ndim = size(positions, 1)
 
@@ -29,11 +29,8 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
 
     # Build the SPGLIB cell object
     @debug "Building the SPGLIB cell object"
-    newcell = Cell(cell, positions, types)
+    spglib_cell = Cell(cell, positions, types)
     
-    get_symmetry_group_from_spglib(newcell; symprec=symprec)
-end
-function get_symmetry_group_from_spglib(spglib_cell :: Cell; symprec::Float64 = 1e-6, type::Type = Float64) :: Symmetries
     # Get the symmetry operations
     @debug "Getting the symmetry operations"
     R, T = Spglib.get_symmetry(spglib_cell, symprec)
