@@ -32,7 +32,7 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
     # Build the SPGLIB cell object
     if spglib_py_module != nothing
         @debug "Using the python spglib module"
-        spglib_cell = spglib_py_module.Cell(cell', positions', types)
+        spglib_cell = (cell', positions', types)
         symmetry_py_dict = spglib_py_module.get_symmetry(spglib_cell, symprec=symprec)
         n_sym = size(symmetry_py_dict["rotations"], 1)
         Rmat = zeros(type, 3, 3, n_sym)

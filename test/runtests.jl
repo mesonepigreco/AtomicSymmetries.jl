@@ -1,5 +1,6 @@
 using Test
 using AtomicSymmetries
+using PyCall
 
 # Include generic files
 include("define_cell.jl")
@@ -10,9 +11,21 @@ include("test_bcc.jl")
 include("test_r3m.jl")
 @testset "R3M" test_r3m()
 
-include("test_spglib.jl")
-@testset "Spglib simple" test_load_spglib()
-@testset "Spglib supercell" test_symmetries_supercell()
+@testset "Spglib tests" begin
+    include("test_spglib.jl")
+    test_load_spglib()
+    test_symmetries_supercell()
+    test_gold_unit_cell_spglib()
+    test_gold_supercell_spglib()
+
+    # Check that the python spglib module works
+    try
+        pyimport("spglib")
+        test_python_spglib()
+    catch
+        @warn "The python spglib module is not installed. Skipping the test."
+    end
+end
 
 include("test_filter.jl")
 @testset "Filter" test_filter()

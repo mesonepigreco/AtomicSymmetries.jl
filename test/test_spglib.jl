@@ -1,5 +1,6 @@
 using Test
 using AtomicSymmetries
+using PyCall
 include("define_cell.jl")
 
 function test_load_spglib()
@@ -30,6 +31,13 @@ function test_gold_supercell_spglib()
     @test length(gold_group) == 12*8
 end
 
+
+function test_python_spglib()
+    pos, cell, types = get_gold_unit_cell()
+    gold_group = get_symmetry_group_from_spglib(pos, cell, types; spglib_py_module = pyimport("spglib"))
+
+    @test length(gold_group) == 12
+end
 
 
 function test_symmetries_supercell()
