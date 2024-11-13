@@ -12,6 +12,26 @@ function test_load_spglib()
     @test length(pm3m_group) == 48
 end
 
+function test_gold_unit_cell_spglib()
+    pos, cell, types = get_gold_unit_cell()
+    gold_group = get_symmetry_group_from_spglib(pos, cell, types)
+    @test length(gold_group) == 12
+end
+
+function test_gold_supercell_spglib()
+    pos, cell, types = get_gold_unit_cell()
+    positions, cell, types = get_supercell(pos, cell, types, [2, 2, 2])
+
+    gold_group = get_symmetry_group_from_spglib(positions, cell, types)
+    println("Positions: ", positions')
+    println("Cell: ", cell')
+    println("Types: ", types)
+    println("Gold group: ", length(gold_group))
+    @test length(gold_group) == 12*8
+end
+
+
+
 function test_symmetries_supercell()
     positions, cell, types = get_pm3m_supercell()
 
