@@ -3,21 +3,25 @@
 
 @doc raw"""
     get_symmetry_group_from_spglib(positions :: AbstractMatrix, cell :: AbstractMatrix, types :: Array{Int}; symprec :: Float64 = 1e-6)
-    get_symmetry_group_from_spglib(ase_atoms :: PyObject; symprec :: Float64 = 1e-6)
-
+    get_symmetry_group_from_spglib(spglib_cell :: Cell; symprec::Float64 = 1e-6, type::Type = Float64) :: Symmetries
 
 Build a symmetry group from the spglib library.
 
 # Arguments
 
+Either a spglib cell object or
+
 - `positions::AbstractMatrix`: The atomic positions in the cell (crystallographic coordinates), with shape `(3, N)`.
 - `cell::AbstractMatrix`: The cell matrix with shape `(3, 3)`.
 - `types::Array{Int}`: The atomic types.
+
+Optional arguments:
 - `symprec::Float64`: The symmetry precision.
+- `type::Type`: The numerical precision type for the symmetry operations.
 
 Alternatively, you can pass an ASE Atoms object.
 """
-function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell::AbstractMatrix{<:Real}, types::Vector{<:Int}; symprec::Float64 = 1e-6, type::Type = Float64) :: Symmetries
+function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell::AbstractMatrix{<:Real}, types::Vector{<:Int}; kwargs...) :: Symmetries
     nat = size(positions, 2)
     ndim = size(positions, 1)
 
@@ -27,9 +31,12 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
     @debug "Building the SPGLIB cell object"
     newcell = Cell(cell, positions, types)
     
+    get_symmetry_group_from_spglib(newcell; symprec=symprec)
+end
+function get_symmetry_group_from_spglib(spglib_cell :: Cell; symprec::Float64 = 1e-6, type::Type = Float64) :: Symmetries
     # Get the symmetry operations
     @debug "Getting the symmetry operations"
-    R, T = Spglib.get_symmetry(newcell, symprec)
+    R, T = Spglib.get_symmetry(spglib_cell, symprec)
 
     # Create the new symmetry group
     @debug "Creating the symmetry group"
@@ -50,6 +57,7 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
 
     return sym_group
 end
+
 # function get_symmetry_group_from_spglib(structure :: PyObject; type = Float64, kwargs...) :: Symmetries
 #     nat = length(structure.atoms)
 #     positions = zeros(type, 3, nat)
