@@ -130,7 +130,7 @@ If update is true, the symmetrize_fc! and symmetrize_centroid! functions are upd
 If check_existing is true, the symmetry is only added if it is not already in the list of symmetries.
 """
 function add_symmetry!(sym :: Symmetries{T}, symm :: AbstractMatrix{U}; 
-        update :: Bool = true, check_existing :: Bool = false, irt = Nothing) where {T, U}
+        update :: Bool = true, check_existing :: Bool = false, irt = nothing) where {T, U}
     if check_existing
         for s in sym.symmetries
             if isapprox(s, symm)
