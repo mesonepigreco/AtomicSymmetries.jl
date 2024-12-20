@@ -28,7 +28,10 @@ include("test_r3m.jl")
 end
 
 include("test_filter.jl")
-@testset "Filter" test_filter()
+@testset "Filter" begin 
+    test_filter()
+    test_filter_full_vector()
+end
 
 @testset "Cart to Crystal" begin
     include("test_crystal_cart.jl")

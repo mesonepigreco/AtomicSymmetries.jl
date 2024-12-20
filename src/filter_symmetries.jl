@@ -14,12 +14,22 @@ But we then need symmetries that also are invariant under an external perturbati
 """
 function filter_invariant_symmetries!(symmetry_group :: Symmetries, vector :: AbstractVector)
     tmp_vector = similar(vector)
-    @assert length(vector) == symmetry_group.dimension "Error, vector must be a vector of the same dimension as the symmetry group, in this case $(symmetry_group.dimension) (instead of $(length(vector)))"
+    nat = length(vector) ÷ symmetry_group.dimension
+
+    @assert length(vector) % symmetry_group.dimension == 0 "Error, length(vector) must be a multiple of the dimension ($(symmetry_group.dimension))."
+    @assert nat == 1 || nat == get_n_atoms(symmetry_group) "Error, wrong number of atoms in the provided vector: ($(symmetry_group.dimension))."
+
+    irt = zeros(Int, nat)
+    irt[1] = 1
 
     for i in length(symmetry_group) :-1: 1
+        if nat > 1
+            irt .= symmetry_group.irt[i]
+        end
+        
         # Check the invariance
         tmp_vector .= 0
-        apply_sym_centroid!(tmp_vector, vector, symmetry_group.symmetries[i], symmetry_group.dimension, [1])
+        apply_sym_centroid!(tmp_vector, vector, symmetry_group.symmetries[i], symmetry_group.dimension, irt)
         # println("Symmetry $i: ", symmetry_group.symmetries[i])
         # println("Vector: ", vector)
         # println("Transformed vector: ", tmp_vector)
