@@ -28,7 +28,7 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
     ndim = size(positions, 1)
 
     newpos = collect(eachcol(positions))
-    newcell = collect(eachcol(cell, 9))
+    newcell = collect(eachcol(cell))
 
     @assert ndim == 3 "Only 3D systems are supported for SPGLIB symmetry groups."
 
