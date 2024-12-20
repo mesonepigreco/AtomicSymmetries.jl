@@ -41,6 +41,20 @@ function get_vector_generators(
 
     # TODO: get the baseline generator
     for i in 1:n_modes
+        # Check if the generator is dependent from the others without generating
+        good_generator = true
+        for j in 1: length(old_vectors)
+            if abs(old_vectors[j][i]) > 1e-8
+                good_generator = false
+                break
+            end
+        end
+
+        # Fast skip the generators
+        if !good_generator
+            continue
+        end
+        
         get_vector_generator!(generator, i, symmetry_group;
             func_apply_constraints! = func_apply_constraints!,
             normalize=false)
@@ -101,6 +115,21 @@ function get_matrix_generators(
         if i_index < j_index
             continue
         end
+        
+        # Check if the generator is dependent from the others without generating
+        good_generator = true
+        for j in 1: length(old_vectors)
+            if abs(old_vectors[j][i_index, j_index]) > 1e-8
+                good_generator = false
+                break
+            end
+        end
+
+        # Fast skip the generators
+        if !good_generator
+            continue
+        end
+        
 
         get_matrix_generator!(generator, i, symmetry_group;
             func_apply_constraints! = func_apply_constraints!,
