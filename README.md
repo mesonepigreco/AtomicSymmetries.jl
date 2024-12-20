@@ -141,7 +141,7 @@ This function does not require any memory allocation.
 
 ## Filter symmetries
 
-It is possible to filter symmetries that are not compatible with a given external perturbation.
+It is possible to filter symmetries incompatible with a given external perturbation.
 At this stage, only linear perturbations are supported.
 For example, to filter the symmetries that are not compatible with a perturbation along the x direction, one can use
 
@@ -149,4 +149,6 @@ For example, to filter the symmetries that are not compatible with a perturbatio
 filter_invariant_symmetries!(symmetry_group, [1.0, 0.0, 0.0])
 ```
 
-All symmetry operations that do not leave invariant the perturbation vector are removed from the symmetry group.
+All symmetry operations not leaving the perturbation vector invariant are removed from the symmetry group.
+Since version 0.2, it is possible to parse a vector of size n_dimension * n_atoms, 
+with a different displacement vector acting on each atom.
