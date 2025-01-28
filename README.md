@@ -46,6 +46,19 @@ symmetry_group.symmetrize_centroid!(vector)
 symmetry_group.symmetrize_fc!(matrix)
 ```
 
+### Structure symmetrization
+
+Sometimes it is useful to symmetrize the atomic positions of a crystal structure.
+To follow the correct Wyckoff positions. 
+This is achieved with the function ``symmetrize_positions!``.
+
+```julia
+symmetrize_positions!(cartesian_coords, cell, symmetry_group)
+```
+
+This function takes the atomic positions in cartesian coordinates, the cell matrix and the symmetry group.
+The cell must be column-wise, i.e., each column is a primitive vector of the cell.
+
 ## The symmetry generators
 
 From the symmetry group, we can obtain a vectorial subspace that is invariant under the symmetry operations.
