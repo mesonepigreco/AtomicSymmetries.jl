@@ -18,6 +18,7 @@ $$
 
 The name irt stands for "index of the representative of the transformation".
 and it is in line with the notation used in the Quantum Espresso and the CellConstructor codes.
+
 """
 mutable struct Symmetries{T}
     symmetries :: Vector{Matrix{T}}
@@ -28,6 +29,7 @@ mutable struct Symmetries{T}
     symmetrize_fc! :: Union{Function, Nothing}
     symmetrize_centroid! :: Union{Function, Nothing}
     enforce_noninteracting :: Vector{Int}
+    translations :: Vector{Vector{T}}
 end
 get_nsymmetries(sym :: Symmetries) = length(sym.symmetries)
 get_dimensions(sym :: Symmetries) = sym.dimension
@@ -72,9 +74,16 @@ function update_symmetry_functions!(sym :: Symmetries{T}) where {T}
         end
     end
 
-    function sym_centroid!(centroid :: AbstractVector{U}) where {U}
+    function sym_centroid!(centroid :: AbstractVector{U}; apply_translations=false) where {U}
         my_centroid = similar(centroid)
         my_centroid .= 0.0
+
+        # Check if translations are correctly initialized
+        if apply_translations 
+            if length(sym.translations) != length(sym.symmetries)
+                error("The number of translations must be equal to the number of symmetries")
+            end
+        end
 
         for i in 1:get_nsymmetries(sym)
             symmat = sym.symmetries[i]
@@ -99,6 +108,55 @@ function update_symmetry_functions!(sym :: Symmetries{T}) where {T}
     # end
 end    
 
+@doc raw"""
+    symmetrize_positions!(positions, cell, symmetry_group)
+
+symmetrize an atomic coordinates in real space. 
+This subroutie symmetrizes a system with Cartesian coordinats (positions)
+using the specified symmetry group (that must include translations).
+"""
+function symmetrize_positions!(positions :: AbstractMatrix{T}, cell :: AbstractMatrix{T}, symmetry_group :: Symmetries; buffer=default_buffer()) where {T}
+    # Check the presence of translations
+    if length(symmetry_group.translations) != length(symmetry_group.symmetries)
+        error("The number of translations must be equal to the number of symmetries to symmetrize the positions")
+    end
+
+    # Convert to crystal coordinates
+    @no_escape buffer begin 
+        crystal_coords = @alloc(T, size(positions)...)
+        get_crystal_coords!(crystal_coords, positions, cell; buffer=buffer)
+
+        tmp_centroids = @alloc(T, length(crystal_coords))
+        tmp_results = @alloc(T, length(crystal_coords))
+        tmp_results .= 0.0
+        
+        # Loop over the symmetries
+        for i in 1:length(symmetry_group.symmetries)
+            tmp_centroids .= 0.0
+            apply_sym_centroid!(tmp_centroids, reshape(crystal_coords, :),
+                                symmetry_group.symmetries[i],
+                                symmetry_group.dimension,
+                                symmetry_group.irt[i];
+                                translation = symmetry_group.translations[i])
+
+            # Compute the δ from the centroid
+            for j in 1:length(tmp_results)
+                delta = tmp_centroids[j] - crystal_coords[j]
+                delta -= round(delta)
+                tmp_results[j] += delta
+            end
+        end
+        tmp_results ./= length(symmetry_group.symmetries)
+
+        # Add the δ from the original position
+        for i in 1:length(crystal_coords)
+            crystal_coords[i] += tmp_results[i]
+        end
+
+        get_cartesian_coords!(positions, crystal_coords, cell)
+        nothing # <-- avoid returning
+    end
+end
 
 @doc raw"""
     update_irt!(sym :: Symmetries{T}; coordinates :: Union{Nothing, Vector{T}} = nothing) where {T}
@@ -174,18 +232,35 @@ function apply_sym_fc!(result :: AbstractMatrix{T}, fc :: AbstractMatrix{T}, sym
 end
 
 @doc raw"""
-    apply_sym_centroid!(result :: Vector{T}, centroid :: Vector{T}, sym :: Matrix{T}, dimensions :: Int, irt :: Vector{Int}) where {T}
+    apply_sym_centroid!(result :: Vector{T}, centroid :: Vector{T}, sym :: Matrix{T}, dimensions :: Int, irt :: Vector{Int};
+    translation = nothing) where {T}
 
 Apply the symmetry ``sym`` to the centroid vector ``centroid`` and add the result to ``result``.
 
 irt indicates how the symmetry maps particle into each other.
+translation, if present, is a vector of which all atoms are translated after the symmetry operation.
 """
-function apply_sym_centroid!(result :: AbstractVector{T}, centroid :: AbstractVector{T}, sym :: AbstractMatrix{U}, dimensions :: Int, irt :: AbstractVector{Int}) where {T,U}
+function apply_sym_centroid!(result :: AbstractVector{T}, centroid :: AbstractVector{T}, sym :: AbstractMatrix{U}, dimensions :: Int, irt :: AbstractVector{Int};
+    translation = nothing) where {T,U}
     # Use mul! to avoid allocating memory
     n_atoms = length(centroid) ÷ dimensions
-    for i ∈ 1:n_atoms 
-        j = irt[i]
-        @views mul!(result[dimensions*(j-1) + 1: dimensions*j], sym, centroid[dimensions*(i-1) + 1: dimensions*i], 1.0, 1.0)    
+    if translation == nothing
+        for i ∈ 1:n_atoms 
+            j = irt[i]
+            @views mul!(result[dimensions*(j-1) + 1: dimensions*j], sym, centroid[dimensions*(i-1) + 1: dimensions*i], 1.0, 1.0)    
+        end
+    else
+        partial_result = zeros(T, dimensions)
+        for i ∈ 1:n_atoms 
+            j = irt[i]
+            @views mul!(partial_result, sym, centroid[dimensions*(i-1) + 1: dimensions*i], 1.0, 0.0)    
+            # Convert the partial result into the primitive cell
+            @views to_primitive_cell_cryst!(partial_result, [0.0, 0.0, 0.0])
+
+
+
+            result[dimensions*(j-1) + 1: dimensions*j] .+= partial_result .+ translation
+        end
     end
 end
 
@@ -328,7 +403,7 @@ end
 
 
 function get_empty_symmetry_group(T :: Type) :: Symmetries{T}
-    return Symmetries{T}([], 0, 0, nothing, [], nothing, nothing, [])
+    return Symmetries{T}([], 0, 0, nothing, [], nothing, nothing, [], [])
 end
 
 
@@ -487,7 +562,8 @@ This function returns the symmetry group containing only the identity matrix.
 """
 function get_identity_symmetry_group(T :: Type; 
         dims :: Int = 2,
-        n_atoms :: Int = 1) :: Symmetries{T}
+        n_atoms :: Int = 1,
+        translations :: Bool = false) :: Symmetries{T}
     syms = get_empty_symmetry_group(T)
     syms.n_particles = n_atoms
     syms.dimension = dims
@@ -497,7 +573,13 @@ function get_identity_symmetry_group(T :: Type;
                   update = false, 
                   irt = collect(1:n_atoms))
 
+
     complete_symmetry_group!(syms)
+
+    if translations 
+        push!(syms.translations, zeros(T, dims))
+    end
+
     return syms
 end
 

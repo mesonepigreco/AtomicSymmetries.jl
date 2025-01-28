@@ -17,9 +17,23 @@ function get_crystal_coords!(crystal :: AbstractMatrix{T}, cartesian :: Abstract
 
         mul!(tmp_vectors, cell', cartesian)
         mul!(crystal, inv_metric_tensor, tmp_vectors)
+        nothing # <-- Avoid returning crystal
     end
 end
 
 function get_cartesian_coords!(cartesian :: AbstractMatrix{T}, crystal :: AbstractMatrix{T}, cell :: AbstractMatrix{T}) where T
     mul!(cartesian, cell, crystal)
+end
+
+@doc raw"""
+    to_primitive_cell_cryst!(cryst_coords :: AbstractVector{T}, closest_vector :: AbstractVector{T})
+
+Convert the crystal coordinates into the primitive cell closest
+to the provided vector
+"""
+function to_primitive_cell_cryst!(cryst_coords :: AbstractVector{T}, closest_vector :: AbstractVector{T}) where {T}
+    ndim = length(cryst_coords)
+    for i in 1:ndim
+        cryst_coords[i] = cryst_coords[i] - round(cryst_coords[i] - closest_vector[i])
+    end
 end

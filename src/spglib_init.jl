@@ -59,7 +59,8 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
 
     # Create the new symmetry group
     @debug "Creating the symmetry group"
-    sym_group = get_identity_symmetry_group(type; dims=ndim, n_atoms=nat)
+    sym_group = get_identity_symmetry_group(type; dims=ndim, n_atoms=nat, 
+                                            translations = true)
 
     # Add the symmetry operations excluding the first identity
     @debug "Adding the symmetry operations"
@@ -69,6 +70,7 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
 
         # Add the symmetry operation
         add_symmetry!(sym_group, R[i], update=false; irt=irt)
+        push!(sym_group.translations, T[i])
     end
 
     @debug "Updating the symmetry functions"
