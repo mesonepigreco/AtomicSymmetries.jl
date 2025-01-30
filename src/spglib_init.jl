@@ -73,29 +73,53 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
         push!(sym_group.translations, T[i])
     end
 
+    round_translations!(sym_group)
+
     @debug "Updating the symmetry functions"
     update_symmetry_functions!(sym_group)
+
 
     return sym_group
 end
 
-# function get_symmetry_group_from_spglib(structure :: PyObject; type = Float64, kwargs...) :: Symmetries
-#     nat = length(structure.atoms)
-#     positions = zeros(type, 3, nat)
-#     cell = zeros(type, 3, 3)
-#     types = zeros(Int, nat)
-# 
-#     cell .= structure.cell'
-#     for  i in 1:nat
-#         positions[:, i] .= structure.positions[i, :]
-#         types[i] = structure.get_atomic_numbers()[i]
-#     end
-# 
-#     # Get the crystalline coordinates
-#     crystal_coords = zeros(type, 3, nat)
-#     get_crystal_coords!(crystal_coords, positions, cell)
-# 
-# 
-#     return get_symmetry_group_from_spglib(crystal_coords, cell, types; kwargs...)
-# end
+
+@doc raw"""
+    round_translation!(translation :: AbstractVector; max_value :: Int = 8)
+
+round the translations to the exact values.
+Fractional translation can be 1/2 1/3 2/3 1/4 ... 
+The maximum division is given by max_value parameter.
+"""
+function round_translation!(translation :: AbstractVector{T}; max_value :: Int=10, threshold = 1e-8) where T
+    # Round the translation
+    for i in 1:length(translation)
+        thr = 1000.0
+        good_j = 1
+        for j in 2:max_value
+            if abs(translation[i] * j - round(translation[i] * j)) < thr
+                thr = abs(translation[i] * j - round(translation[i] * j))
+                good_j = j
+            end
+
+            if thr < threshold
+                break
+            end
+        end
+        translation[i] = round(translation[i] * good_j) / good_j
+    end
+end
+
+@doc raw"""
+    round_translations!(symmetry_group:: Symmetries; max_value :: Int = 10)
+
+This subroutine corrects the translations to assume exact fractional values.
+
+Fractional translation can be 1/2 1/3 2/3 1/4 ... 
+The maximum division allowed is given by max_value parameter.
+"""
+function round_translations!(symmetry_group :: Symmetries; max_value :: Int = 10, kwargs...)
+    for i in 1:length(symmetry_group.translations)
+        round_translation!(symmetry_group.translations[i]; max_value = max_value, kwargs...)
+    end
+end
 
