@@ -37,3 +37,8 @@ end
     include("test_crystal_cart.jl")
     test_crystal_to_cart()
 end
+
+@testset "translations and irt" begin
+    include("test_pbte_symmetrization.jl")
+    test_pbte_supercell_symmetrization()
+end

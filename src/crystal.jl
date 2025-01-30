@@ -37,3 +37,37 @@ function to_primitive_cell_cryst!(cryst_coords :: AbstractVector{T}, closest_vec
         cryst_coords[i] = cryst_coords[i] - round(cryst_coords[i] - closest_vector[i])
     end
 end
+
+
+
+@doc raw"""
+    to_primitive_cell_cart!(cartesian_coords :: AbstractVector{T}, cell :: AbstractMatrix{T}; buffer = default_buffer())
+    to_primitive_cell_cart!(cartesian_coords :: AbstractMatrix{T}, cell :: AbstractMatrix{T}; buffer = default_buffer())
+
+Put the atoms as closest as possible to the origin of the cell.
+"""
+function to_primitive_cell_cart!(cartesian_coords :: AbstractVector{T}, cell :: AbstractMatrix{T}; buffer = default_buffer()) where T
+    @no_escape buffer begin
+        crystal_coords = @alloc(T, size(cartesian_coords)...)
+        get_crystal_coords!(crystal_coords, cartesian_coords, cell)
+        to_primitive_cell_cryst!(crystal_coords, [0.0, 0.0, 0.0])
+        get_cartesian_coords!(cartesian_coords, crystal_coords, cell)
+        nothing
+    end
+end
+function to_primitive_cell_cart!(cartesian_coords :: AbstractMatrix{T}, cell :: AbstractMatrix{T}; buffer = default_buffer()) where T
+    nat = size(cartesian_coords, 2)
+    @no_escape buffer begin
+        crystal_coords = @alloc(T, size(cartesian_coords)...)
+        get_crystal_coords!(crystal_coords, cartesian_coords, cell; buffer=buffer)
+        zvect = @alloc(T, 3)
+        zvect .= 0.0 
+
+        for i in 1:nat
+            @views to_primitive_cell_cryst!(crystal_coords[:, i], zvect)
+        end
+        get_cartesian_coords!(cartesian_coords, crystal_coords, cell)
+        nothing
+    end
+end
+

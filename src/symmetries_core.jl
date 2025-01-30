@@ -143,6 +143,20 @@ function symmetrize_positions!(positions :: AbstractMatrix{T}, cell :: AbstractM
             for j in 1:length(tmp_results)
                 delta = tmp_centroids[j] - crystal_coords[j]
                 delta -= round(delta)
+                if abs(delta)>0.2
+                    println()
+                    println("Found a value of δ = $delta; Sym $i, coord $j")
+                    println("translation = ", symmetry_group.translations[i])
+                    iat = (j-1) ÷ 3 + 1
+                    i_transf = findfirst(isequal(iat), symmetry_group.irt[i])
+                    println("original atom = ", iat)
+                    println("corresponding atom = ", i_transf)
+                    println("original = ", crystal_coords[3*(iat-1)+1:3*iat])
+                    println("corresponding original = ", crystal_coords[3*(i_transf-1)+1:3*i_transf])
+
+                    println("symmetry = ", symmetry_group.symmetries[i])
+                    println("transformed = ", tmp_centroids[3*(iat-1)+1:3*iat])
+                end
                 tmp_results[j] += delta
             end
         end
@@ -254,10 +268,9 @@ function apply_sym_centroid!(result :: AbstractVector{T}, centroid :: AbstractVe
         for i ∈ 1:n_atoms 
             j = irt[i]
             @views mul!(partial_result, sym, centroid[dimensions*(i-1) + 1: dimensions*i], 1.0, 0.0)    
+            
             # Convert the partial result into the primitive cell
-            @views to_primitive_cell_cryst!(partial_result, [0.0, 0.0, 0.0])
-
-
+            # @views to_primitive_cell_cryst!(partial_result, [0.0, 0.0, 0.0])
 
             result[dimensions*(j-1) + 1: dimensions*j] .+= partial_result .+ translation
         end
@@ -608,7 +621,7 @@ function get_irt!(irt, coords, matrix, translation)
     dist = 0
 
     for i in 1:nat 
-        min_dist = 1000
+        min_dist = 1000.0
         min_j = 1
         for j in 1:nat
             nval = 0
@@ -627,10 +640,25 @@ function get_irt!(irt, coords, matrix, translation)
                 min_dist = nval
             end
 
-            if min_dist < 1e-8
+            if min_dist < 1e-5
                 break
             end
         end
-        irt[min_j] = i
+        if min_dist > 0.1
+            println("The distance between the atoms is too large: $min_dist")
+            println("Atom $i: ", coords[:, i])
+            println("Atom $min_j: ", coords[:, min_j])
+            error("Error while initializing the symmetry group.")
+        # else
+        #     println("IRT[$min_j] = $i")
+        #     println("min_dist = $min_dist")
+        #     println("original coords = ", coords[:, min_j])
+        #     println("transformed coords = ", new_coords[:, i])
+        #     println("matrix = ", matrix)
+        #     println()
+        end
+
+        #irt[min_j] = i
+        irt[i] = min_j
     end
 end

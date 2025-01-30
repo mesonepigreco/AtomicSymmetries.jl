@@ -23,6 +23,8 @@ export get_symmetry_group_from_spglib,
        filter_invariant_symmetries!,
        get_crystal_coords!,
        get_cartesian_coords!,
-       symmetrize_positions!
+       symmetrize_positions!,
+       to_primitive_cell_cryst!,
+       to_primitive_cell_cart!
 
 end # module AtomicSymmetries
