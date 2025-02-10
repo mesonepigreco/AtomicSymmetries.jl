@@ -31,7 +31,6 @@ function test_pbte_supercell_symmetrization(; verbose=false)
 
     @test n_symmetries == 384
 
-        #
     # Perform the symmetrization
     symmetrize_positions!(atomic_positions_cartesian, cell, symmetry_group)
 
@@ -70,15 +69,42 @@ function test_asr_impose(; verbose=false)
     fc = randn(Float64, 6, 6)
     fc += fc'
     asr!(fc)
-    #sym_group.symmetrize_fc!(fc)
+    sym_group.symmetrize_fc!(fc)
 
-    println()
-    println("Symmetrized force constants:")
-    println(fc)
+    ω = real.(eigvals(fc))
 
-    ω = eigvals(fc)
+    for i in 1:length(sym_group)
+        println("Symmetry ", i)
+        println("IRT: ", sym_group.irt[i])
+    end
+
     if verbose
+        println()
+        println("Symmetrized force constants:")
+        println(fc)
         println("Eigenvalues: ", ω)
+    end
+
+    # Check if at least 3 eigenvalues are zero
+    zerocount = 0
+    for ω_val in ω
+        if abs(ω_val) < 1e-12
+            zerocount += 1
+        end
+    end
+    @test zerocount == 3
+
+    # Check if the 3 non-zero eigenvalues are the same
+    value = 0.0
+    for ω_val in ω
+        if abs(ω_val) < 1e-12
+            continue
+        end
+        if value == 0
+            value = ω_val
+        else
+            @test ω_val ≈ value atol = 1e-6
+        end
     end
 end
 

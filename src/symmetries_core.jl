@@ -58,6 +58,7 @@ function update_symmetry_functions!(sym :: Symmetries{T}) where {T}
             # my_fc = similar(fc)
             my_fc .= 0.0
 
+            # Apply the symmetries
             for i in 1:length(sym.symmetries)
                 symmat = sym.symmetries[i]
                 irt =sym.irt[i]
@@ -65,6 +66,7 @@ function update_symmetry_functions!(sym :: Symmetries{T}) where {T}
             end
             fc .= my_fc 
             fc ./= length(sym.symmetries)
+
             nothing #Avoid returning
         end
 
@@ -112,6 +114,40 @@ function update_symmetry_functions!(sym :: Symmetries{T}) where {T}
     #    update_irt!(sym)
     # end
 end    
+
+
+@doc raw"""
+    symmetrize_fc!(fc :: AbstractMatrix{T}, symmetry_group :: Symmetries, cell :: AbstractMatrix; buffer=default_buffer()) where {T}
+
+Symmetrize the force constant matrix `fc` using the symmetry group `symmetry_group`.
+This function assumes that the force constant matrix is in cartesian coordinates,
+opposite to `symmetry_group.symmetrize_fc!`, which assumes that the force constant matrix is in crystal coordinates.
+Note that to symmetrize cartesian coordinates, also the primitive cell is required (`cell`).
+
+The function operates in place, meaning that
+the final result overwrites the input force constant matrix `fc`.
+
+This function exploits Bumper.jl stack allocation
+to avoid memory allocation.
+The stack can be manually specified as an optional keyword argument `buffer`.
+"""
+function symmetrize_fc!(symmetry_group :: Symmetries, fc :: AbstractMatrix{T}, cell :: AbstractMatrix; buffer=default_buffer()) where {T}
+    if isnothing(symmetry_group.symmetrize_fc!)
+        error("Symmetry group not initialized")
+    end
+
+    @no_escape buffer begin
+        fc_cryst = @alloc(T, size(fc)...)
+
+        cart_cryst_matrix_conversion!(fc_cryst, fc, cell; cart_to_cryst = true, buffer=buffer)
+        symmetry_group.symmetrize_fc!(fc_cryst; buffer=buffer)
+        cart_cryst_matrix_conversion!(fc, fc_cryst, cell; cart_to_cryst = false, buffer=buffer)
+
+        nothing
+    end
+end
+
+
 
 @doc raw"""
     symmetrize_positions!(positions, cell, symmetry_group)
@@ -246,14 +282,16 @@ function apply_sym_fc!(result :: AbstractMatrix{T}, fc :: AbstractMatrix{T}, sym
             i_s = irt[i]
             for j in 1:n_atoms 
                 j_s = irt[j]
-                mul!(work, view(fc, dimensions*(i-1) + 1: dimensions*i, dimensions*(j-1)+1 : dimensions*j), sym, 1.0, 0.0)
-                mul!(view(result, dimensions*(i_s-1) + 1: dimensions*i_s, dimensions*(j_s - 1) + 1: dimensions*j_s), 
+                @views mul!(work, fc[dimensions*(i-1) + 1: dimensions*i, dimensions*(j-1)+1 : dimensions*j], sym, 1.0, 0.0)
+                @views mul!(result[dimensions*(i_s-1) + 1: dimensions*i_s, dimensions*(j_s - 1) + 1: dimensions*j_s], 
                     sym', work, 1.0, 1.0)
             end
         end
         nothing
     end
 end
+
+
 
 @doc raw"""
     apply_sym_centroid!(result :: Vector{T}, centroid :: Vector{T}, sym :: Matrix{T}, dimensions :: Int, irt :: Vector{Int};
