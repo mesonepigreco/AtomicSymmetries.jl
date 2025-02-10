@@ -15,8 +15,7 @@ include("crystal.jl")
 
 export get_symmetry_group_from_spglib,
        get_nsymmetries,
-       ASRVectorConstraint!,
-       ASRMatrixConstraint!,
+       ASRConstraint!,
        Symmetries,
        get_empty_symmetry_group,
        complete_symmetry_group!,

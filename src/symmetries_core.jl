@@ -52,16 +52,21 @@ symmetrize_fc! and symmetrize_centroid! functions.
 Note that the symmetries must be set before calling this function.
 """
 function update_symmetry_functions!(sym :: Symmetries{T}) where {T}
-    function sym_fc!(fc :: AbstractMatrix{U}) where {U}
-        my_fc = similar(fc)
-        my_fc .= 0.0
+    function sym_fc!(fc :: AbstractMatrix{U}; buffer=default_buffer()) where {U}
+        @no_escape buffer begin
+            my_fc = @alloc(U, size(fc)...)
+            # my_fc = similar(fc)
+            my_fc .= 0.0
 
-        for i in 1:length(sym.symmetries)
-            symmat = sym.symmetries[i]
-            irt =sym.irt[i]
-            apply_sym_fc!(my_fc, fc, symmat, sym.dimension, irt)
+            for i in 1:length(sym.symmetries)
+                symmat = sym.symmetries[i]
+                irt =sym.irt[i]
+                apply_sym_fc!(my_fc, fc, symmat, sym.dimension, irt; buffer=buffer)
+            end
+            fc .= my_fc 
+            fc ./= length(sym.symmetries)
+            nothing #Avoid returning
         end
-        fc .= my_fc ./ length(sym.symmetries)
 
         # Apply the exchange symmetry
         if !isnothing(sym.exchange_symmetry)
@@ -229,19 +234,24 @@ Apply the symmetry ``sym`` to the force constant matrix ``fc`` and add the resul
 
 irt indicates how the symmetry maps particle into each other.
 """
-function apply_sym_fc!(result :: AbstractMatrix{T}, fc :: AbstractMatrix{T}, sym :: AbstractMatrix{U}, dimensions :: Int, irt :: AbstractVector{Int}) where {T, U}
+function apply_sym_fc!(result :: AbstractMatrix{T}, fc :: AbstractMatrix{T}, sym :: AbstractMatrix{U}, dimensions :: Int, irt :: AbstractVector{Int}; buffer=default_buffer()) where {T, U}
     # Use mul! to avoid allocating memory
     n_atoms = size(fc, 1) ÷ dimensions
 
-    work = zeros(T, (dimensions, dimensions))
-    for i ∈ 1:n_atoms
-        i_s = irt[i]
-        for j in 1:n_atoms 
-            j_s = irt[j]
-            mul!(work, view(fc, dimensions*(i-1) + 1: dimensions*i, dimensions*(j-1)+1 : dimensions*j), sym, 1.0, 0.0)
-            mul!(view(result, dimensions*(i_s-1) + 1: dimensions*i_s, dimensions*(j_s - 1) + 1: dimensions*j_s), 
-                sym', work, 1.0, 1.0)
+    @no_escape buffer begin
+        work = @alloc(T, dimensions, dimensions)
+        #work = zeros(T, (dimensions, dimensions))
+        work .= 0
+        for i ∈ 1:n_atoms
+            i_s = irt[i]
+            for j in 1:n_atoms 
+                j_s = irt[j]
+                mul!(work, view(fc, dimensions*(i-1) + 1: dimensions*i, dimensions*(j-1)+1 : dimensions*j), sym, 1.0, 0.0)
+                mul!(view(result, dimensions*(i_s-1) + 1: dimensions*i_s, dimensions*(j_s - 1) + 1: dimensions*j_s), 
+                    sym', work, 1.0, 1.0)
+            end
         end
+        nothing
     end
 end
 

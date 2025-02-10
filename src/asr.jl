@@ -12,10 +12,10 @@ my_asr!(my_tensor)
 
 This will apply the ASR constraint to the tensor `my_tensor` in place.
 """
-struct ASRVectorConstraint!
+struct ASRConstraint!
     dimension::Int
 end
-function (asr::ASRVectorConstraint!)(tensor::AbstractVector)
+function (asr::ASRConstraint!)(vector::AbstractVector{T}) where T
     # Get the dimension of the tensor
     dimension = asr.dimension
 
@@ -30,23 +30,64 @@ function (asr::ASRVectorConstraint!)(tensor::AbstractVector)
     end
 end
 
-# Apply the ASR constraint to a rank-2 tensor
-struct ASRMatrixConstraint!
-    dimension::Int
-end
-function (asr::ASRMatrixConstraint!)(matrix :: AbstractMatrix)
-    nat = size(matrix, 1) ÷ asr.dimension
-    proj = zeros(eltype(matrix), asr.dimension * nat)
-    proj_view = reshape(proj, asr.dimension, nat)
-    copy_mat = copy(matrix)
-    for t in 1:asr.dimension
-        # Get the projector
-        proj .= 0
-        @views proj_view[t, :] .= 1.0 / √(asr.dimension * nat)
+@doc raw"""
+    (asr::ASRConstraint!)(matrix :: AbstractMatrix{T})
 
-        # subtract the projector
-        matrix_projected = proj' * matrix * proj
-        matrix .-= matrix_projected * (proj * proj')
+Apply the ASR constraint to a rank-2 tensor of dimension `asr.dimension`.
+
+The ASR is applied using the following formula to the $\Phi$ matrix:
+$$
+\Phi' = (I - \sum_t \left| t\right>\left< t\right|) \Phi(I - \sum_t \left| t\right>\left< t\right|)
+$$
+where $\left |t\right>$ is the $t$-th global translation vector (1 for each dimension). 
+
+The implementation follows the equation
+$$
+\Phi_{ij}^{\alpha\beta}' = \Phi_{ij}^{\alpha\beta} - \frac{1}{N_{\text{at}}}\sum_{tk} \Phi_{ik}^{\alpha t}\delta_{\beta t}
+- \frac{1}{N_{\text{at}}}\sum_{tk} \Phi_{kj}^{t\beta}\delta_{\alpha t}
++ \frac{1}{N_{\text{at}}^2}\sum_{t_1t_2hk} \Phi_{hk}^{t_1t_2}\delta_{\alpha t_1}\delta_{\beta t_2}
+$$
+
+which ensures that the translational invariance is mathematically preserved.
+"""
+function (asr::ASRConstraint!)(matrix :: AbstractMatrix{T}; buffer=default_buffer()) where T
+    nat = size(matrix, 1) ÷ asr.dimension
+    nmodes = size(matrix, 1)
+    
+    # Get the last part
+    @no_escape buffer begin
+        trans = @alloc(T, nmodes, nmodes)
+        tmp_mat = @alloc(T, nmodes, nmodes)
+        trans .= 0
+        for i in 1:nmodes
+            trans[i, i] = 1
+        end
+
+
+        # Add the translational projector
+        for i in 1:asr.dimension
+            for h in 1:nmodes
+               h_dim = (h-1) % asr.dimension + 1
+               if h_dim != i
+                   continue
+               end
+
+               for k in 1:nmodes
+                   k_dim = (k-1) % asr.dimension + 1
+                   if k_dim != i
+                       continue
+                   end
+
+                   trans[h, k] -= 1 / nat
+               end
+           end
+        end
+
+        #TODO : This is not the most efficient way to do this
+        #Probably we can exploit the sparsity of trans to speedup
+        mul!(tmp_mat, matrix, trans)
+        mul!(matrix, trans, tmp_mat)
+        nothing
     end
 end
 

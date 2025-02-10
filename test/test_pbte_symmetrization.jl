@@ -1,4 +1,5 @@
 using Test
+using LinearAlgebra
 using AtomicSymmetries
 
 """
@@ -51,6 +52,38 @@ function test_pbte_supercell_symmetrization(; verbose=false)
 end
 
 
+function test_asr_impose(; verbose=false)
+    # Define the PbTe cell 
+    a = 12.21
+    cell = [-a 0.0 a; 0.0 a a; -a a 0.0]'
+    positions = [0.0 0.0 0.0; 0.5 0.5 0.5]'
+
+    # Get the symmetry group and ASR
+    sym_group = get_symmetry_group_from_spglib(positions, cell, [1, 2])
+    asr! = ASRConstraint!(3)
+
+    if verbose 
+        println("Found $(length(sym_group)) symmetries")
+    end
+
+    # Initialize a random Hermitian dynamical matrix
+    fc = randn(Float64, 6, 6)
+    fc += fc'
+    asr!(fc)
+    #sym_group.symmetrize_fc!(fc)
+
+    println()
+    println("Symmetrized force constants:")
+    println(fc)
+
+    ω = eigvals(fc)
+    if verbose
+        println("Eigenvalues: ", ω)
+    end
+end
+
+
 if abspath(PROGRAM_FILE) == @__FILE__
     test_pbte_supercell_symmetrization(verbose=true)
+    test_asr_impose(verbose=true)
 end
