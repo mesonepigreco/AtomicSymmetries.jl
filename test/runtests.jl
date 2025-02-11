@@ -41,7 +41,8 @@ end
 @testset "exact fc symmetrization" begin
     include("test_fc_symmetrization.jl")
     test_fc_sym_primitive_cell()
-    test_fc_sym_pbte_uc()
+    test_fc_sym_pbte_uc() # This test symmetries without IRT
+    test_fc_sym_pbte_444() # This test also pure translations
 end
 
 @testset "translations and irt and ASR" begin
