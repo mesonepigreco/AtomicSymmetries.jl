@@ -73,29 +73,6 @@ end
 
 
 
-@doc raw"""
-    cart_to_cryst_mat!(dest :: AbstractMatrix{T}, matrix :: AbstractMatrix{T}, cell :: AbstractMatrix{T}) where T
-
-Convert a matrix `matrix` from cartesian to crystal coordinates.
-The result are stored in `dest`.
-The primitive vectors are stored as columns of the `cell` matrix.
-"""
-    n_atoms = size(cartesian, 2)
-    @no_escape buffer begin
-        metric_tensor = @alloc(T, 3, 3)
-        inv_metric_tensor = @alloc(T, 3, 3)
-        tmp_vectors = @alloc(T, 3, n_atoms)
-
-        mul!(metric_tensor, cell', cell)
-        inv_metric_tensor .= inv(metric_tensor)
-
-        mul!(tmp_vectors, cell', cartesian)
-        mul!(crystal, inv_metric_tensor, tmp_vectors)
-        nothing # <-- Avoid returning crystal
-    end
-end
-
-
 
 @doc """
     cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: AbstractMatrix{T}, cell :: AbstractMatrix{T}; cart_to_cryst :: Bool = true, buffer=default_buffer()) where T
@@ -117,25 +94,25 @@ function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: Abst
 
     dest .= 0.0 
 
-    @no_alloc buffer begin
+    @no_escape buffer begin
         metric_tensor = @alloc(T, dim, dim)
         inv_metric_tensor = @alloc(T, dim, dim)
         transform_matrix = @alloc(T, dim, dim)
         tmp_matrix = @alloc(T, dim, dim)
 
         mul!(metric_tensor, cell', cell)
-        ldiv!(transform_matrix, metric_tensor, cell')
+        inv_metric_tensor .= inv(metric_tensor) #TODO: Allocating
+        mul!(transform_matrix, inv_metric_tensor, cell')
+
+        if cart_to_cryst
+            transform_matrix .= inv(transform_matrix)
+        end
 
         for i in 1:n_atoms
             for j in 1:n_atoms
-                if !cart_to_cryst
-                    @views mul!(tmp_matrix, matrix[dim*(i-1) + 1 : dim*i, dim*(j-1)+1 : dim*j], 
-                                transform_matrix)
-                    @views mul!(dest[dim*(i-1) + 1 : dim*i, dim*(j-1)+1 : dim*j], transform_matrix, tmp_matrix)
-                else
-                    @views rdiv!(tmp_matrix, matrix[dim*(i-1) + 1 : dim*i, dim*(j-1)+1 : dim*j], transform_matrix)
-                    @views ldiv!(dest[dim*(i-1) + 1 : dim*i, dim*(j-1)+1 : dim*j], transform_matrix, tmp_matrix)
-                end
+                @views mul!(tmp_matrix, matrix[dim*(i-1) + 1 : dim*i, dim*(j-1)+1 : dim*j], 
+                            transform_matrix)
+                @views mul!(dest[dim*(i-1) + 1 : dim*i, dim*(j-1)+1 : dim*j], transform_matrix', tmp_matrix)
             end
         end
         nothing

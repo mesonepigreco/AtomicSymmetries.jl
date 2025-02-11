@@ -22,7 +22,8 @@ function test_bcc(;verbose=false)
     # Now check if we constrain the symmetry we get a null vector
     vector_input = rand(6)
     @show vector_input
-    bcc_group.symmetrize_centroid!(vector_input)
+    bcc_group.symmetrize_centroid!(vector_input) # This is good for crystal coordinates
+    #symmetrize_vector!(vector_input, bcc_group, cell) # This is good for cartesian coordinates
     @show vector_input
 
     @test maximum(abs.(vector_input)) < 1e-12

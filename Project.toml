@@ -7,16 +7,16 @@ version = "0.3.1"
 Bumper = "8ce10254-0962-460f-a3d8-1f77fea1446e"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Spglib = "f761d5c5-86db-4880-b97f-9680a7cccfb5"
+StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[compat]
+Bumper = "^0.7"
+Spglib = "0.9.4"
+julia = "1.8"
 
 [extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test", "PyCall"]
-
-[compat]
-julia = "1.8"
-Spglib = "0.9.4"
-Bumper = "^0.7"
-

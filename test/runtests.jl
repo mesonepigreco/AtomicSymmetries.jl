@@ -38,7 +38,14 @@ end
     test_crystal_to_cart()
 end
 
+@testset "exact fc symmetrization" begin
+    include("test_fc_symmetrization.jl")
+    test_fc_sym_primitive_cell()
+    test_fc_sym_pbte_uc()
+end
+
 @testset "translations and irt" begin
     include("test_pbte_symmetrization.jl")
     test_pbte_supercell_symmetrization()
 end
+

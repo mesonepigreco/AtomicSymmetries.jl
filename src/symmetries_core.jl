@@ -117,7 +117,7 @@ end
 
 
 @doc raw"""
-    symmetrize_fc!(fc :: AbstractMatrix{T}, symmetry_group :: Symmetries, cell :: AbstractMatrix; buffer=default_buffer()) where {T}
+    symmetrize_fc!(fc :: AbstractMatrix{T}, cell :: AbstractMatrix, symmetry_group :: Symmetries; buffer=default_buffer()) where {T}
 
 Symmetrize the force constant matrix `fc` using the symmetry group `symmetry_group`.
 This function assumes that the force constant matrix is in cartesian coordinates,
@@ -131,7 +131,7 @@ This function exploits Bumper.jl stack allocation
 to avoid memory allocation.
 The stack can be manually specified as an optional keyword argument `buffer`.
 """
-function symmetrize_fc!(symmetry_group :: Symmetries, fc :: AbstractMatrix{T}, cell :: AbstractMatrix; buffer=default_buffer()) where {T}
+function symmetrize_fc!(fc :: AbstractMatrix{T}, cell :: AbstractMatrix, symmetry_group :: Symmetries; buffer=default_buffer()) where {T}
     if isnothing(symmetry_group.symmetrize_fc!)
         error("Symmetry group not initialized")
     end
@@ -147,16 +147,63 @@ function symmetrize_fc!(symmetry_group :: Symmetries, fc :: AbstractMatrix{T}, c
     end
 end
 
+@doc raw"""
+    symmetrize_vector!(vector :: AbstractVector{T}, cell :: AbstractMatrix, symmetry_group :: Symmetries; buffer=default_buffer()) where {T}
+
+Symmetrize the vector `vector` using the symmetry group `symmetry_group`.
+The vector has a length of `dim * nat`, where `nat` is the number of atoms in the system.
+It is assumed to represent a quantity that is invariant under translations (e.g. a force or a displacement).
+If you want to symmetrize a quantity that is not invariant under translations (e.g. atomic positions),
+use `symmetrize_positions!` instead.
+
+This function assumes that the `vector` is provided in cartesian coordinates,
+opposite to `symmetry_group.symmetrize_centroid!`, which assumes that the `vector` is in crystal coordinates.
+Note that to symmetrize cartesian coordinates, also the primitive cell is required (`cell`).
+
+The function operates in place, meaning that
+the final result overwrites the input `vector`.
+
+This function exploits Bumper.jl stack allocation
+to avoid memory allocation.
+The stack can be manually specified as an optional keyword argument `buffer`.
+"""
+function symmetrize_vector!(vector :: AbstractVector{T}, cell :: AbstractMatrix, symmetry_group :: Symmetries; buffer=default_buffer()) where T
+    if isnothing(symmetry_group.symmetrize_centroid!)
+        error("Symmetry group not initialized")
+    end
+
+    ndims = symmetry_group.dimension
+
+    @no_escape buffer begin
+        vector_cryst = @alloc(T, lenght(vector))
+
+        get_crystal_coords!(reshape(vector_cryst, ndims, :), reshape(vector, ndims, :), cell; buffer=buffer)
+        symmetry_group.symmetrize_centroid!(vector_cryst; buffer=buffer)
+        get_cartesian_coords!(rehsape(vector, ndims, :), reshape(vector_cryst, ndims, :), cell)
+
+        nothing
+    end
+end
+
 
 
 @doc raw"""
-    symmetrize_positions!(positions, cell, symmetry_group)
+    symmetrize_positions!(positions :: AbstractMatrix{T}, cell :: AbstractMatrix, symmetry_group :: Symmetries; buffer=default_buffer()) where {T}
 
 symmetrize an atomic coordinates in real space. 
 This subroutie symmetrizes a system with Cartesian coordinats (positions)
 using the specified symmetry group (that must include translations).
+
+If you want to symmetrize a quantity that is invariant under translations (e.g. a force or a displacement),
+use `symmetrize_vector!` instead.
+
+The function operates in place, meaning that
+the final result overwrites the input positions.
+
+This function exploits Bumper.jl stack allocation
+to avoid memory allocation, you can manually specify the stack buffer as an optional keyword argument `buffer`.
 """
-function symmetrize_positions!(positions :: AbstractMatrix{T}, cell :: AbstractMatrix{T}, symmetry_group :: Symmetries; buffer=default_buffer()) where {T}
+function symmetrize_positions!(positions :: AbstractMatrix{T}, cell :: AbstractMatrix, symmetry_group :: Symmetries; buffer=default_buffer()) where {T}
     # Check the presence of translations
     if length(symmetry_group.translations) != length(symmetry_group.symmetries)
         error("The number of translations must be equal to the number of symmetries to symmetrize the positions")
