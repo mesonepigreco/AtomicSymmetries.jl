@@ -96,7 +96,58 @@ function test_fc_sym_pbte_uc(; verbose=false)
     end
 end
 
+function test_fc_sym_pbte_444(; verbose=false)
+    # Define the PbTe cell 
+    a = 12.21 * 4
+    cell = [-a 0.0 a; 0.0 a a; -a a 0.0]'
+    nat = 2*4^3
+    atoms_types = zeros(Int, nat)
+    for i in 1:4^3
+        atoms_types[2i-1] = 1
+        atoms_types[2i] = 2
+    end
+
+    # Load the cartesian positions
+    cart_pos = zeros(Float64, 3, nat)
+    cart_pos .= readdlm(joinpath(@__DIR__, "pbte_struct_4x4x4.txt"))'
+
+    # Convert into crystal coordinates
+    crystal_pos = similar(cart_pos)
+    get_crystal_coords!(crystal_pos, cart_pos, cell)
+
+    # Find the symmetry group
+    sym_group = get_symmetry_group_from_spglib(crystal_pos, cell, atoms_types)
+    asr! = ASRConstraint!(3)
+
+    if verbose
+        println()
+        println("TEST PBTE 4x4x4 FC SYMMETRIZATION")
+        println("=================================")
+        println("Number of symmetries: ", length(sym_group))
+    end
+
+    # Load the force constants before symmetrization and after symmetrization
+    fc_nosym = readdlm(joinpath(@__DIR__, "pbte_fc_4x4x4_nosym.txt"))
+    fc_sym = readdlm(joinpath(@__DIR__, "pbte_fc_4x4x4_sym.txt"))
+
+    # Symmetrize the FC
+    asr!(fc_nosym)
+    symmetrize_fc!(fc_nosym, cell, sym_group)
+
+    # Compare with the correct FC
+    for i in 1:size(fc_sym, 1)
+        for j in 1:size(fc_sym, 2)
+            println("i = $i, j = $j")
+            @test fc_nosym[i, j] ≈ fc_sym[i, j] atol = 1e-6
+        end
+    end
+end
+
+
+
+
 if abspath(PROGRAM_FILE) == @__FILE__
     test_fc_sym_primitive_cell(verbose=true)
     test_fc_sym_pbte_uc(verbose=true)
+    test_fc_sym_pbte_444(verbose=true)
 end

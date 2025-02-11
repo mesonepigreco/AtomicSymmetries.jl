@@ -69,17 +69,17 @@ function test_asr_impose(; verbose=false)
     fc = randn(Float64, 6, 6)
     fc += fc'
     asr!(fc)
-    sym_group.symmetrize_fc!(fc)
+    symmetrize_fc!(fc, cell, sym_group)
 
     ω = real.(eigvals(fc))
 
-    for i in 1:length(sym_group)
-        println("Symmetry ", i)
-        println("IRT: ", sym_group.irt[i])
-    end
-
     if verbose
         println()
+        for i in 1:length(sym_group)
+            println("Symmetry ", i)
+            println("IRT: ", sym_group.irt[i])
+        end
+
         println("Symmetrized force constants:")
         println(fc)
         println("Eigenvalues: ", ω)

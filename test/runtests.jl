@@ -44,8 +44,10 @@ end
     test_fc_sym_pbte_uc()
 end
 
-@testset "translations and irt" begin
+@testset "translations and irt and ASR" begin
     include("test_pbte_symmetrization.jl")
     test_pbte_supercell_symmetrization()
+    test_asr_impose()
 end
+
 
