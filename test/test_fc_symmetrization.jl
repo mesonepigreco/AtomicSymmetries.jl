@@ -137,7 +137,6 @@ function test_fc_sym_pbte_444(; verbose=false)
     # Compare with the correct FC
     for i in 1:size(fc_sym, 1)
         for j in 1:size(fc_sym, 2)
-            println("i = $i, j = $j")
             @test fc_nosym[i, j] ≈ fc_sym[i, j] atol = 1e-6
         end
     end
