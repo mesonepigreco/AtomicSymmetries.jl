@@ -178,7 +178,7 @@ function symmetrize_vector!(vector :: AbstractVector{T}, cell :: AbstractMatrix,
         vector_cryst = @alloc(T, length(vector))
 
         get_crystal_coords!(reshape(vector_cryst, ndims, :), reshape(vector, ndims, :), cell; buffer=buffer)
-        symmetry_group.symmetrize_centroid!(vector_cryst; buffer=buffer)
+        symmetry_group.symmetrize_centroid!(vector_cryst)
         get_cartesian_coords!(rehsape(vector, ndims, :), reshape(vector_cryst, ndims, :), cell)
 
         nothing
