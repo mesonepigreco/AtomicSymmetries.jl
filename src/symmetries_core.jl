@@ -175,7 +175,7 @@ function symmetrize_vector!(vector :: AbstractVector{T}, cell :: AbstractMatrix,
     ndims = symmetry_group.dimension
 
     @no_escape buffer begin
-        vector_cryst = @alloc(T, lenght(vector))
+        vector_cryst = @alloc(T, length(vector))
 
         get_crystal_coords!(reshape(vector_cryst, ndims, :), reshape(vector, ndims, :), cell; buffer=buffer)
         symmetry_group.symmetrize_centroid!(vector_cryst; buffer=buffer)
