@@ -53,4 +53,6 @@ end
 
 
 @testset "generators of a non-orthogonal cell" begin
+    include("test_pbte_generators.jl")
+    test_find_generators_pbte()
 end
