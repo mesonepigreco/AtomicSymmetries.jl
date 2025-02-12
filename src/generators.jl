@@ -1,12 +1,14 @@
 @doc raw"""
-    get_vector_generators(symmetry_group::Symmetries{U};
-                   func_apply_constraints! = nothing)
-                    :: Vector{Int} where {T, U}
+    get_vector_generators(symmetry_group::Symmetries{U},
+                          unit_cell :: AbstractMatrix{T};
+                       func_apply_constraints! = nothing)
+                        :: Vector{Int} where {T, U}
 
 Get the generators of the symmetry group for the vectors.
 
 # Arguments
 - `symmetry_group::Symmetries{U}`: The symmetry group to be considered in the generator creation process.
+- `unit_cell :: AbstractMatrix{T}`: The unit cell of the system.
 - `func_apply_constraints!::Function` (optional): A function to apply constraints to the parameters. Defaults to `nothing`.
 
 # Returns
@@ -15,6 +17,8 @@ Get the generators of the symmetry group for the vectors.
 # Description
 This function generates a set of independent generators for a given symmetry group.
 These generators proved a basis for the space of vectors that are invariant under the symmetry group.
+
+Note that the generators are computed in cartesian coordinates(FC)
 
 The independence of a generator is determined by its norm and its linear independence from previously accepted generators. If a generator is found to be linearly dependent but not identical to a previous one, the function throws an error indicating that this scenario is not yet implemented.
 
@@ -26,9 +30,11 @@ symmetry_group = # Symmetries object
 generators = get_generators(symmetry_group)
 """
 function get_vector_generators( 
-    symmetry_group::Symmetries{U};
-    func_apply_constraints! = nothing,
-    type = Float64) :: Vector{Int} where {U}
+        symmetry_group::Symmetries{U}, 
+        unit_cell :: AbstractMatrix{T};
+        func_apply_constraints! = nothing,
+        type = Float64) :: Vector{Int} where {U, T}
+
     n_dims = get_dimensions(symmetry_group)
     n_atoms = get_n_atoms(symmetry_group)
     n_modes = n_dims * n_atoms
@@ -95,9 +101,9 @@ function get_vector_generators(
     return generators
 end
 function get_matrix_generators( 
-    symmetry_group::Symmetries{U};
-    func_apply_constraints! = nothing,
-    type = Float64) :: Vector{Int} where {U}
+        symmetry_group::Symmetries{U}, unit_cell :: AbstractMatrix{T};
+        func_apply_constraints! = nothing,
+        type = Float64) :: Vector{Int} where {U, T}
     n_dims = get_dimensions(symmetry_group)
     n_atoms = get_n_atoms(symmetry_group)
     n_modes = n_dims * n_atoms
@@ -131,7 +137,7 @@ function get_matrix_generators(
         end
         
 
-        get_matrix_generator!(generator, i, symmetry_group;
+        get_matrix_generator!(generator, i, symmetry_group, unit_cell;
             func_apply_constraints! = func_apply_constraints!,
             normalize=false)
 
@@ -152,9 +158,8 @@ function get_matrix_generators(
                 if sqrt(abs.(reshape(generator, :)' * reshape(old_vectors[j], :))) > 1e-4
                     println("Current $i generator: $(generator)")
                     println("Original norm:", normvalue)
-                    println("Old generators:")
-                    println(old_vectors)
-                    println("Linearly dependent with $j : $(sqrt(abs.(generator' * old_vectors[j])))")
+                    println("Dependent with: $(old_vectors[j])")
+                    println("Linearly dependent with $j : $(sqrt(abs.(reshape(generator, :)' * reshape(old_vectors[j], :))))")
                     throw("The generators are linearly dependent but not the same. This is not implemented yet.")
                 end
             end
@@ -250,7 +255,7 @@ function get_vector_generator!(generator :: Vector{T}, generator_index:: Int, sy
         generator ./= normvalue    
     end
 end
-function get_matrix_generator!(generator :: AbstractMatrix{T}, generator_index:: Int, symmetry_group :: Symmetries{U};
+function get_matrix_generator!(generator :: AbstractMatrix{T}, generator_index:: Int, symmetry_group :: Symmetries{U}, cell :: AbstractMatrix{T};
     func_apply_constraints! =nothing,
     baseline_generator = nothing,
     transpose=true,
@@ -281,7 +286,8 @@ function get_matrix_generator!(generator :: AbstractMatrix{T}, generator_index::
     end
 
     # Apply the symmetry group
-    symmetry_group.symmetrize_fc!(generator)
+    symmetrize_fc!(generator, cell, symmetry_group)
+    # symmetry_group.symmetrize_fc!(generator)
 
     # Subtract the baseline generator
     if baseline_generator != nothing
@@ -325,7 +331,7 @@ function get_centroids_from_generators!(centroids:: AbstractVector{T}, generator
     end
 end
 function get_fc_from_generators!(fc :: AbstractMatrix{T}, generators::AbstractVector{Int}, coefficients :: AbstractVector{T},
-    symmetries :: Symmetries{U};
+        symmetries :: Symmetries{U}, cell :: AbstractMatrix{T};
     func_apply_constraints! =nothing,
     generator_type = nothing
     ) where {T, U}
@@ -339,7 +345,7 @@ function get_fc_from_generators!(fc :: AbstractMatrix{T}, generators::AbstractVe
     generator = zeros(generator_type, n1, n2)
 
     for i in 1:length(generators)
-        get_matrix_generator!(generator, generators[i], symmetries;
+        get_matrix_generator!(generator, generators[i], symmetries, cell;
                               func_apply_constraints! = func_apply_constraints!)
         
         # Do it without allocating
@@ -379,12 +385,13 @@ end
 function get_coefficients_from_fc!(coefficients :: AbstractVector{T}, fc :: AbstractMatrix{T}, 
     generators :: AbstractVector{Int},
     symmetries :: Symmetries{U},
+    cell :: AbstractMatrix{T};
     func_apply_constraints! =nothing) where {T, U}
 
     generator = similar(fc)
     for i in 1: length(generators)
         get_matrix_generator!(generator, generators[i], 
-            symmetries;
+            symmetries, cell;
             func_apply_constraints! = func_apply_constraints!)
         
         coefficients[i] = reshape(generator, :)' * reshape(fc, :) 
