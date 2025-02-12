@@ -20,13 +20,14 @@ function (asr::ASRConstraint!)(vector::AbstractVector{T}) where T
     dimension = asr.dimension
 
     # Get the number of atoms
-    nat = length(tensor) ÷ dimension
+    nat = length(vector) ÷ dimension
 
-    mytensor = reshape(tensor, dimension, nat)
+    mytensor = reshape(vector, dimension, :)
+    marginal = sum(mytensor, dims=2) ./ nat
 
     # Apply the ASR constraint
     for i in 1:nat
-        @views mytensor[:, i] .-= sum(mytensor[:, i]) / dimension
+        @views mytensor[:, i] .-= marginal
     end
 end
 

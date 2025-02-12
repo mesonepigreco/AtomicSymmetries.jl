@@ -38,6 +38,11 @@ end
     test_crystal_to_cart()
 end
 
+@testset "ASR and Vector symmetrization (non-orthogonal cell)" begin
+    include("test_symmetrize_vector_cart.jl")
+    test_symmetrize_vector()
+end
+
 @testset "exact fc symmetrization" begin
     include("test_fc_symmetrization.jl")
     test_fc_sym_primitive_cell()
