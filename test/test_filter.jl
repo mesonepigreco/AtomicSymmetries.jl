@@ -17,7 +17,7 @@ function test_filter(; verbose=false)
     end
 
     # Now filter the symmetries
-    filter_invariant_symmetries!(symmetry_group, [1.0, 0.0, 0.0])
+    filter_invariant_symmetries!(symmetry_group, [1.0, 0.0, 0.0], cell)
 
     n_after_filter = length(symmetry_group)
 
@@ -59,7 +59,7 @@ function test_filter_full_vector(; verbose=false)
 
     # Now filter the symmetries
     vector_filter = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    filter_invariant_symmetries!(symmetry_group, vector_filter)
+    filter_invariant_symmetries!(symmetry_group, vector_filter, cell)
 
     n_after_filter = length(symmetry_group)
 
