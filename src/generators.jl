@@ -331,7 +331,7 @@ function get_centroids_from_generators!(centroids:: AbstractVector{T}, generator
     end
 end
 function get_fc_from_generators!(fc :: AbstractMatrix{T}, generators::AbstractVector{Int}, coefficients :: AbstractVector{T},
-        symmetries :: Symmetries{U}, cell :: AbstractMatrix{T};
+        symmetries :: Symmetries{U}, cell :: AbstractMatrix;
     func_apply_constraints! =nothing,
     generator_type = nothing
     ) where {T, U}
@@ -385,7 +385,7 @@ end
 function get_coefficients_from_fc!(coefficients :: AbstractVector{T}, fc :: AbstractMatrix{T}, 
     generators :: AbstractVector{Int},
     symmetries :: Symmetries{U},
-    cell :: AbstractMatrix{T};
+    cell :: AbstractMatrix;
     func_apply_constraints! =nothing) where {T, U}
 
     generator = similar(fc)
