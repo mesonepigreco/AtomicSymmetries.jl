@@ -60,7 +60,7 @@ function (asr::ASRConstraint!)(matrix :: AbstractMatrix{T}; buffer=default_buffe
     
     # Get the last part
     @no_escape buffer begin
-        if not differentiable
+        if !differentiable
             trans = @alloc(T, nmodes, nmodes)
             tmp_mat = @alloc(T, nmodes, nmodes)
         else
