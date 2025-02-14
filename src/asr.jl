@@ -32,7 +32,7 @@ function (asr::ASRConstraint!)(vector::AbstractVector{T}) where T
 end
 
 @doc raw"""
-    (asr::ASRConstraint!)(matrix :: AbstractMatrix{T})
+    (asr::ASRConstraint!)(matrix :: AbstractMatrix{T}; buffer=default_buffer(), differentiable=false) where T
 
 Apply the ASR constraint to a rank-2 tensor of dimension `asr.dimension`.
 
@@ -50,15 +50,23 @@ $$
 $$
 
 which ensures that the translational invariance is mathematically preserved.
+
+If differentiable is set to true, the function will not use bumper to allow memory allocation 
+and differentiability of the function.
 """
-function (asr::ASRConstraint!)(matrix :: AbstractMatrix{T}; buffer=default_buffer()) where T
+function (asr::ASRConstraint!)(matrix :: AbstractMatrix{T}; buffer=default_buffer(), differentiable=false) where T
     nat = size(matrix, 1) ÷ asr.dimension
     nmodes = size(matrix, 1)
     
     # Get the last part
     @no_escape buffer begin
-        trans = @alloc(T, nmodes, nmodes)
-        tmp_mat = @alloc(T, nmodes, nmodes)
+        if not differentiable
+            trans = @alloc(T, nmodes, nmodes)
+            tmp_mat = @alloc(T, nmodes, nmodes)
+        else
+            trans= zeros(T, nmodes, nmodes)
+            tmp_mat = zeros(T, nmodes, nmodes)
+        end
         trans .= 0
         for i in 1:nmodes
             trans[i, i] = 1
