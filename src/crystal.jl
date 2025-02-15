@@ -119,3 +119,29 @@ function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: Abst
     end
 end
 
+
+@doc raw"""
+    get_cryst_cart_transform_matrix!(transform_matrix, cell; buffer=default_buffer(), cart_to_cryst=true)
+
+Get the transformation matrix between crystal and cartesian coordinates.
+The transformation matrix is stored in `transform_matrix`.
+
+If `cart_to_cryst` is `true`, the transformation matrix is from cartesian to crystal coordinates.
+Otherwise, the transformation matrix is from crystal to cartesian coordinates.
+"""
+function get_cryst_cart_transform_matrix!(transform_matrix, cell; buffer=default_buffer(), cart_to_cryst=true)
+    @no_escape buffer begin
+        metric_tensor = @alloc(T, dim, dim)
+        inv_metric_tensor = @alloc(T, dim, dim)
+        transform_matrix = @alloc(T, dim, dim)
+
+        mul!(metric_tensor, cell', cell)
+        inv_metric_tensor .= inv(metric_tensor) #TODO: Allocating
+        mul!(transform_matrix, inv_metric_tensor, cell')
+
+        if cart_to_cryst
+            transform_matrix .= inv(transform_matrix)
+        end
+        nothing
+    end
+end
