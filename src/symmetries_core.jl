@@ -757,3 +757,38 @@ function get_irt!(irt, coords, matrix, translation)
         irt[i] = min_j
     end
 end
+
+@doc raw"""
+    get_n_translations(sym::Symmetries) :: Int
+
+returns the number of pure translations in the symmetry group.
+"""
+function get_n_translations(sym :: Symmetries) :: Int
+    n_trans = 0
+    for i in 1:length(sym.symmetries)
+        thr = 0.0
+        for h in 1:sym.dimension
+            for k in 1:sym.dimension
+                identity = 0.0
+                if h == k
+                    identity = 1.0
+                end
+                thr += abs(sym.symmetries[i][h, k] - identity)
+            end
+        end
+
+        if thr < 1e-8
+            n_trans += 1
+        end
+    end
+    n_trans
+end
+
+@doc raw"""
+    get_n_symmetries_primitive_cell(sym :: Symmetries) :: Int
+
+Returns the number of symmetries in the primitive cell (neglecting pure translations).
+"""
+function get_n_symmetries_primitive_cell(sym :: Symmetries) :: Int
+    get_nsymmetries(sym) ÷ get_n_translations(sym)
+end
