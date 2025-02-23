@@ -233,7 +233,7 @@ end
 
 @doc raw"""
     get_3rank_tensor_generators(symmetry_group :: Symmetries{U}, cell :: AbstractMatrix{T};
-        buffer=default_buffer())
+        buffer=default_buffer()) :: Vector{Int} where {T, U}
 
 Get the generators of the 3-rank tensors that are invariant under the symmetry group.
 The generators represent a basis of the vector space of 3-rank tensors that are invariant under the symmetry group.
@@ -256,27 +256,102 @@ whose 3-rank tensor representation can be retrived using the function
 - `generators :: Vector{Int}` : The vector of the indices of the generators.
 """
 function get_3rank_tensor_generators(symmetry_group :: Symmetries{U}, cell :: AbstractMatrix{T};
-        buffer=default_buffer()) where {T, U}
-
-    generators = Vector{Int}()
+        buffer=default_buffer()) :: Vector{Int} where {T, U}
 
     n_dims = get_dimensions(symmetry_group)
     n_atoms = get_n_atoms(symmetry_group)
     n_modes = n_dims * n_atoms
 
-    generated_indices = []
+    generators = Vector{Int}()
 
-    for i in 1:n_modes*n_modes*n_modes
-        # Convert the index to the indices of the tensor
-        c = (i - 1) ÷ n_modes + 1
-        residual = (i - 1) ÷ n_modes + 1
-        b = (residual - 1) % n_modes + 1
-        a = (residual - 1) ÷ n_modes + 1
+    @no_escape buffer begin
+        # TODO: Use sparse representation
+        tensor_cache = @alloc(T, n_modes, n_modes, n_modes)
+        tensor_cache .= 0
 
-        if c < b || b < a
-            continue
+        # The following array keeps track of which elements have been already generated.
+        not_necessary_indices = @alloc(Int, n_modes * n_modes * n_modes)
+        not_necessary_indices .= 0
+
+        for i in 1:n_modes*n_modes*n_modes
+            # Convert the index to the indices of the tensor
+            c = (i - 1) ÷ n_modes + 1
+            residual = (i - 1) ÷ n_modes + 1
+            b = (residual - 1) % n_modes + 1
+            a = (residual - 1) ÷ n_modes + 1
+
+            if c < b || b < a
+                continue
+            end
+
+            # Skip if i ∈ not_necessary_indices
+            if not_necessary_indices[i] == 1
+                continue
+            end
+
+            # Prepare the current generator
+            get_tensor_generator!(tensor_cache, i, symmetry_group, cell;
+                                  buffer=buffer, normalize=false)
+
+            # Check if the tensor has a nonzero entry
+            normvalue = sum(abs2, reshape(tensor_cache, :))
+            if normvalue > 1e-8
+                # Add the tensor
+                push!(generators, i)
+            end
+
+            # Add all the entry that needs to be skipped
+            for j in i:n_modes*n_modes*n_modes
+                # Convert the index to the indices of the tensor
+                c2 = (i - 1) ÷ n_modes + 1
+                residual = (i - 1) ÷ n_modes + 1
+                b2 = (residual - 1) % n_modes + 1
+                a2 = (residual - 1) ÷ n_modes + 1
+
+                if c2 < b2 || b2 < a2
+                    continue
+                end
+
+                # Check wether the tensor is nonzero
+                if abs(tensor_cache[j]) > 1e-8
+                    # Check if this item is not already in the list
+                    not_necessary_indices[j] = 1
+                end
+            end
         end
-
-        # TODO: how do we understand if this does not need to be generated?
     end
+
+    return generators
 end
+
+
+@doc raw"""
+    get_asr_violation!(violation_tensor ::Array{T, 3}, coefficients :: AbstractVector{T}, generators :: AbstractVector{Int}, symmetry_group :: Symmetries, cell :: AbstractMatrix{U}; buffer=simple_buffer())  where {T,U}
+
+Compute the tensor quantifying the violation of the acoustic sum rule.
+For a 3-rank tensor, the ASR violation is quantified by a tensor of size
+
+``
+\Delta_{ab}^{\alpha\beta\gamma} = \sum_c T_{abc}^{\alpha\beta\gamma}
+``
+
+where the $a$ runs over atoms while greek letters over Cartesian coordinates.
+
+## Parameters
+
+
+- `violation_tensor::Array{T, 3}`, the tensor $\Delta_{ab}^{\alpha\beta\gamma}$. The dimension of the tensor is 3, 3nat, 3nat
+- `coefficients :: AbstractVector{T}`, the components on the generators
+- `generators :: AbstractVector{Int}`, the generators of the symmetry.
+- `symmetry_group :: Symmetries` the symmetry group
+- `cell :: AbstractMatrix{U}`, the primitive cell
+
+### Optional arguments
+
+- `buffer=default_buffer()` the Bumper.jl stack.
+
+"""
+function get_asr_violation!(violation_tensor :: Array{T, 3}, coefficients :: AbstractVector{T},
+        generators :: AbstractVector{Int}, symmetry_group :: Symmetries, 
+        cell :: AbstractMatrix
+    end
