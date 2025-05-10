@@ -61,3 +61,8 @@ end
     include("test_pbte_generators.jl")
     test_find_generators_pbte()
 end
+
+@testset "sparsify" begin
+    include("test_sparsify.jl")
+    test_symmetry_sparsification()
+end
