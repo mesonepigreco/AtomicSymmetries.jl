@@ -165,3 +165,19 @@ filter_invariant_symmetries!(symmetry_group, [1.0, 0.0, 0.0])
 All symmetry operations not leaving the perturbation vector invariant are removed from the symmetry group.
 Since version 0.2, it is possible to parse a vector of size n_dimension * n_atoms, 
 with a different displacement vector acting on each atom.
+
+## Symmetry sparsification
+
+A new feature available since version 0.7 is the possibility to get the symmetry matrices as CSC sparse matrices.
+To sparsify a symmetry group, you just need to use the ``sparse`` method from the SparseArrays library (novel dependency of 0.7)
+
+```julia
+Using SparseArrays
+sparse_symmetry_group = sparse(symmetry_group)
+
+# Apply the symmetry 5th operation on a vector v (previosly defined)
+v_new = apply_sparse_symmetry(sparse_symmetry_group.symmetries[5], v)
+```
+
+Notably, this is differentiable via Zygote and Enzyme, so it allows to implement symmetrization in a differentiable way.
+v could also be a series of vector as a Matrix where each vector is stored as a column of v.
