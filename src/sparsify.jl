@@ -80,11 +80,11 @@ function get_sparse_symmetry(symmat :: AbstractMatrix{T}, irt :: Vector{Int}; Sc
 end
 
 @doc raw"""
-    function apply_sparse_symmetry(sparse_s :: SparseMatrixCSC{T}, v :: AbstractVector{U}) :: Vector{U} where {T, U}
+    function apply_sparse_symmetry(sparse_s :: SparseMatrixCSC{T}, v :: AbstractArray{U}) where {T, U}
 
 This function applies the sparse symmetry matrix to a displacement vector.
 """
-function apply_sparse_symmetry(sparse_s :: SparseMatrixCSC{T}, v :: AbstractVector{U}) :: Vector{U} where {T, U}
+function apply_sparse_symmetry(sparse_s :: SparseMatrixCSC{T}, v :: AbstractArray{U}) where {T, U}
     (v' * sparse_s)'
 end
 
