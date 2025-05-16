@@ -29,7 +29,8 @@ export get_symmetry_group_from_spglib,
        get_cartesian_coords!,
        to_primitive_cell_cryst!,
        to_primitive_cell_cart!,
-       apply_sparse_symmetry
+       apply_sparse_symmetry,
+       apply_sparse_symmetry!
 
 
 end # module AtomicSymmetries
