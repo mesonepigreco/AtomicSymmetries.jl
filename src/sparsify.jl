@@ -89,7 +89,7 @@ The inplace version should be nonallocating.
 function apply_sparse_symmetry(sparse_s :: SparseMatrixCSC, v :: AbstractArray) 
     (v' * sparse_s)'
 end
-function apply_sparse_symmetry!(output :: AbstractArray, sparse_s :: SparseMatrixCSC, v :: AbstractArray; buffer = default_buffer()) 
+function apply_sparse_symmetry!(output :: AbstractArray{T}, sparse_s :: SparseMatrixCSC, v :: AbstractArray{T}; buffer = default_buffer()) where T
     @no_escape buffer begin
         w = @alloc(T, 1, length(output))
         w .= v' * sparse_s
