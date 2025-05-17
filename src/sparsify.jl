@@ -94,6 +94,7 @@ function apply_sparse_symmetry!(output :: AbstractArray{T}, sparse_s :: SparseMa
         w = @alloc(T, 1, length(output))
         w .= v' * sparse_s
         output .= w'
+        nothing
     end
 end
 
