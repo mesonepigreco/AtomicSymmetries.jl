@@ -13,7 +13,7 @@ Apply the symmetry on the original vector in q space
 - `irt_q` : The q-q association by symmetry
 """
 function apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, original_vector :: AbstractMatrix{Complex{T}},
-        symmetry_operation :: AbstractMatrix{U}, irt :: AbstractVector{Int}, irt_q :: AbstractVector{Int})
+        symmetry_operation :: AbstractMatrix{U}, irt :: AbstractVector{Int}, irt_q :: AbstractVector{Int}) where {T, U}
     # Apply symmetries 
     nq = length(irt_q)
     n_dims = size(symmetry_operation, 1)
@@ -24,9 +24,9 @@ function apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, or
         for i in 1:n_atoms
             j = irt[i]
 
-            @views mul!(target_vector[n_dims * (j - 1) + 1 : n_dims * j, jq], 
+            @views mul!(target_vector[n_dims * (j - 1) + 1: n_dims * j, jq], 
                         symmetry_operation, 
-                        original_vector[n_dims * (i - 1) +1 : n_dims * i, iq],
+                        original_vector[n_dims * (i - 1) + 1: n_dims * i, iq],
                         T(1.0), T(1.0))
         end
     end
@@ -53,7 +53,7 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
         original_matrix :: AbstractArray{Complex{T}, 3},
         sym :: AbstractMatrix{U},
         irt :: AbstractVector{Int},
-        irt_q :: AbstractVector{Int}; buffer = default_buffer())
+        irt_q :: AbstractVector{Int}; buffer = default_buffer()) where {T, U}
 
     nq = size(target_matrix, 3)
     n_dims = size(sym, 1)
@@ -74,22 +74,24 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
                         sym', work, 1.0, 1.0)
                 end
             end
+        end
         nothing
     end
 end
 
 @doc raw"""
-    get_transformed_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractVector{T}, sym_mat :: AbstractMatrix)
+    get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractVector{T}, sym_mat :: AbstractMatrix)
 
-Assume that the q vectors and the symmetry operation are performed in crystal space
+Get the correspondance q' = Sq on the provided q grid.
+Always assume everything is in crystal coordinates
 """
-function get_transformed_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, sym_mat :: AbstractMatrix; buffer = default_buffer())
+function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, sym_mat :: AbstractMatrix; buffer = default_buffer()) where T
     nq = size(q_points, 2)
     ndims = size(q_points, 1)
     @no_escape buffer begin
-        tmpvector = @alloc(ndims)
-        tmp2 = @alloc(ndims)
-        distance = @alloc(nq)
+        tmpvector = @alloc(T, ndims)
+        tmp2 = @alloc(T, ndims)
+        distance = @alloc(T, nq)
         
         for i in 1:nq
             @views mul!(tmpvector, sym_mat, q_points[:, i])
@@ -98,7 +100,7 @@ function get_transformed_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMa
             min_distance = T(Inf)
             min_index = 0
             for j in 1:nq
-                @views tmp2 = q_points[:, i] - tmpvector
+                @views tmp2 .= q_points[:, i] - tmpvector
                 tmp2 .-= floor.(tmp2)
                 distance = sum(abs2, tmp2) 
                 if distance < min_distance

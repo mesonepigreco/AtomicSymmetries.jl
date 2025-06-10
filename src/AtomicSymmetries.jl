@@ -14,6 +14,8 @@ include("asr.jl")
 include("filter_symmetries.jl")
 include("crystal.jl")
 include("sparsify.jl")
+include("fourier_transform.jl")
+include("symmetrize_qspace.jl")
 
 export get_symmetry_group_from_spglib,
        get_nsymmetries,

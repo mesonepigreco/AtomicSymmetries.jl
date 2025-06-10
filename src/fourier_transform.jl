@@ -41,6 +41,10 @@ function vector_r2q!(
 
     v_q .= 0
 
+    println("R_lat ", size(R_lat))
+    println("q_vec ", size(q))
+
+
     for jq ∈ 1:nq
         for k ∈ 1:nat_sc
             @views q_dot_R = q[:, jq]' * R_lat[:, k]
@@ -157,7 +161,7 @@ function matrix_r2q!(
         matrix_r :: AbstractMatrix{T},
         q :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T}; buffer = default_buffer())
+        R_lat :: Matrix{T}; buffer = default_buffer()) where T
     nq = size(q, 2)
     ndims = size(q, 1)
     nat_sc = size(matrix_r, 1) ÷ ndims
@@ -222,12 +226,12 @@ Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space 
 - R_lat : (3, nat_sc)
     The origin coordinates of the supercell in which the corresponding atom is
 """
-function matrix_r2q!(
+function matrix_q2r!(
         matrix_q :: Array{Complex{T}, 3},
         matrix_r :: AbstractMatrix{T},
         q :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T}; buffer = default_buffer())
+        R_lat :: Matrix{T}; buffer = default_buffer()) where T
     nq = size(q, 2)
     ndims = size(q, 1)
     nat_sc = size(matrix_r, 1) ÷ ndims
