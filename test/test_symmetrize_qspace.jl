@@ -12,7 +12,7 @@ function test_symmetrize_q_space(; verbose=false)
     types = ones(Int, 2)
 
     # Create a 4x4x4 supercell
-    supercell = [1, 1, 1]
+    supercell = [2, 1, 1]
 
     nat = size(positions, 2)
     ndims = size(positions, 1)
@@ -41,7 +41,7 @@ function test_symmetrize_q_space(; verbose=false)
                 @views q_vec[:, counter] .= latvec
 
                 for h in 1:nat
-                    R_lat[:, nat * (counter - 1) + h] = latvec 
+                    R_lat[:, nat * (counter - 1) + h] = latvec  .* supercell
                     super_positions[:, nat * (counter - 1) + h] = positions[:, h] ./ supercell +  latvec
 
                     super_itau[nat * (counter - 1) + h] = h
@@ -57,20 +57,31 @@ function test_symmetrize_q_space(; verbose=false)
         for i in 1:nat_sc
             println(super_positions[:, i])
         end
+
+        println()
+        println("R lat:")
+        for i in 1:nat_sc
+            println(R_lat[:,i])
+        end
+        println()
+        println("Q vec:")
+        for i in 1:n_sc
+            println(q_vec[:, i])
+        end
     end
 
     # Supercell symmetry group
     uc_group = get_symmetry_group_from_spglib(positions, cell, types)
     sc_group = get_symmetry_group_from_spglib(super_positions, super_cell, super_types)
 
-    if verbose
-        println("The symmetries : $(length(uc_group))")
-        for i in 1:length(uc_group)
-            println("S:")
-            @show uc_group.symmetries[i]'
-            @show uc_group.translations[i]
-        end
-    end
+    # if verbose
+    #     println("The symmetries : $(length(uc_group))")
+    #     for i in 1:length(uc_group)
+    #         println("S:")
+    #         @show uc_group.symmetries[i]'
+    #         @show uc_group.translations[i]
+    #     end
+    # end
 
     n_rand = 1
     u_coordinates = randn(Float64, n_rand, nat * ndims * n_sc)
