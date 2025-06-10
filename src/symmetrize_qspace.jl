@@ -100,7 +100,7 @@ function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T},
             min_distance = T(Inf)
             min_index = 0
             for j in 1:nq
-                @views tmp2 .= q_points[:, i] - tmpvector
+                @views tmp2 .= q_points[:, j] - tmpvector
                 tmp2 .-= floor.(tmp2)
                 distance = sum(abs2, tmp2) 
                 if distance < min_distance

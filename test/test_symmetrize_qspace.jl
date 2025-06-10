@@ -9,10 +9,10 @@ function test_symmetrize_q_space(; verbose=false)
     positions = [0.0 0.6
                  0.0 0.6
                  0.0 0.6]
-    types = ones(Int, 2)
+    types = [1, 2]
 
     # Create a 4x4x4 supercell
-    supercell = [2, 1, 1]
+    supercell = [2, 2, 2]
 
     nat = size(positions, 2)
     ndims = size(positions, 1)
@@ -51,6 +51,10 @@ function test_symmetrize_q_space(; verbose=false)
             end
         end
     end
+
+    for iat in 1:nat_sc
+        super_types[iat] = types[super_itau[iat]]
+    end
     
     if verbose
         println("Atoms:")
@@ -74,14 +78,14 @@ function test_symmetrize_q_space(; verbose=false)
     uc_group = get_symmetry_group_from_spglib(positions, cell, types)
     sc_group = get_symmetry_group_from_spglib(super_positions, super_cell, super_types)
 
-    # if verbose
-    #     println("The symmetries : $(length(uc_group))")
-    #     for i in 1:length(uc_group)
-    #         println("S:")
-    #         @show uc_group.symmetries[i]'
-    #         @show uc_group.translations[i]
-    #     end
-    # end
+    if verbose
+        println("The symmetries : $(length(uc_group))")
+        for i in 1:length(uc_group)
+            println("S:")
+            @show uc_group.symmetries[i]'
+            @show uc_group.translations[i]
+        end
+    end
 
     n_rand = 1
     u_coordinates = randn(Float64, n_rand, nat * ndims * n_sc)
@@ -95,10 +99,12 @@ function test_symmetrize_q_space(; verbose=false)
 
     #
     # Apply the symmetry in real space
+    i_sym = 3
 
     irt = zeros(Int, nat * n_sc)
-    AtomicSymmetries.get_irt!(irt, super_positions, uc_group.symmetries[2], uc_group.translations[2] ./ supercell)
-    AtomicSymmetries.apply_sym_centroid!(u_next, u_coordinates[1, :], uc_group.symmetries[2], ndims, irt)
+    #TODO: It may not be the same symmetry (that is why it crashes). Check the translation
+    AtomicSymmetries.get_irt!(irt, super_positions, uc_group.symmetries[i_sym], uc_group.translations[i_sym] ./ supercell)
+    AtomicSymmetries.apply_sym_centroid!(u_next, u_coordinates[1, :], uc_group.symmetries[i_sym], ndims, irt)
 
     # Apply the symmetry in q-space
     AtomicSymmetries.vector_r2q!(q_coordinates, u_coordinates, q_vec, super_itau, R_lat)
@@ -120,8 +126,8 @@ function test_symmetrize_q_space(; verbose=false)
         @test u_coordinates[1, i] ≈ u_next_back[1, i] rtol = 1e-7
     end
     
-    AtomicSymmetries.get_irt_q!(irt_q, q_vec, uc_group.symmetries[2])
-    @views AtomicSymmetries.apply_symmetry_vectorq!(q_next[1, :, :], q_coordinates[1, :, :], uc_group.symmetries[2], uc_group.irt[2], irt_q)
+    AtomicSymmetries.get_irt_q!(irt_q, q_vec, uc_group.symmetries[i_sym])
+    @views AtomicSymmetries.apply_symmetry_vectorq!(q_next[1, :, :], q_coordinates[1, :, :], uc_group.symmetries[i_sym], uc_group.irt[i_sym], irt_q)
 
     AtomicSymmetries.vector_q2r!(u_next_back, q_next, q_vec, super_itau, R_lat)
  
@@ -129,6 +135,15 @@ function test_symmetrize_q_space(; verbose=false)
     # Compare the two vectors
     if verbose 
         println("Test symmetries fourier")
+        println()
+
+        @show irt_q
+        println()
+
+        println("Original  | Transformed | Transformed Fourier")
+        for i_at in 1:nat_sc
+            println("$(u_coordinates[3*(i_at - 1)+1 : 3i_at])   |    $(u_next[3*(i_at-1)+1:3i_at])   |  $(u_next_back[1, 3*(i_at - 1)+1: 3i_at])")
+        end
     end
     for i in 1:length(u_next_back)
         @test u_next_back[1, i] ≈ u_next[i] rtol = 1e-7
