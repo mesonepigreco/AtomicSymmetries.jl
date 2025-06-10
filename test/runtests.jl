@@ -66,3 +66,9 @@ end
     include("test_sparsify.jl")
     test_symmetry_sparsification()
 end
+
+
+@testset "Fourier symmetries" begin
+    include("test_symmetrize_qspace.jl")
+    test_symmetrize_q_space()
+end
