@@ -6,15 +6,16 @@ The structure containing the symmetries of the system.
 Once the symmetries have been initialized, 
 the symmetrize_fc! and symmetrize_centroid! functions can be used to symmetrize the force constant matrix and the centroid.
 
-The exchange_symmetry is a vector of length n_particles, 
+The `exchange_symmetry` is a vector of length `n_particles`, 
 where each element identify the id of the particle.
 If two ids are equal, the particles are indistinguishable.
 
 irt[i][j] is the index of the atom that is equivalent to the j-th atom before the symmetry is applied.
 The expression is
-$$
+
+``
 v_{\text{irt[i]}} = S v_i
-$$
+``
 
 The name irt stands for "index of the representative of the transformation".
 and it is in line with the notation used in the Quantum Espresso and the CellConstructor codes.
@@ -711,7 +712,7 @@ function get_irt!(irt, coords, matrix, translation)
     nat = size(coords, 2)
     ndims = size(coords, 1)
 
-    # debugvalue = sum(translation.^2) > 1e-8
+    #debugvalue = sum(translation.^2) > 1e-8
     debugvalue = false
     dist = 0
 
@@ -739,10 +740,12 @@ function get_irt!(irt, coords, matrix, translation)
                 break
             end
         end
-        if min_dist > 0.1
+        if min_dist > 0.001
             println("The distance between the atoms is too large: $min_dist")
-            println("Atom $i: ", coords[:, i])
-            println("Atom $min_j: ", coords[:, min_j])
+            println("Origin Atom $i: ", coords[:, i])
+            println("Target Atom $min_j: ", coords[:, min_j])
+            println("Origin Atom (after trans) $i: ", new_coords[:, i])
+
             error("Error while initializing the symmetry group.")
         # else
         #     println("IRT[$min_j] = $i")
