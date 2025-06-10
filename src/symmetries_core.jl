@@ -711,7 +711,7 @@ function get_irt!(irt, coords, matrix, translation)
     nat = size(coords, 2)
     ndims = size(coords, 1)
 
-    # debugvalue = sum(translation.^2) > 1e-8
+    #debugvalue = sum(translation.^2) > 1e-8
     debugvalue = false
     dist = 0
 
@@ -739,10 +739,12 @@ function get_irt!(irt, coords, matrix, translation)
                 break
             end
         end
-        if min_dist > 0.1
+        if min_dist > 0.001
             println("The distance between the atoms is too large: $min_dist")
-            println("Atom $i: ", coords[:, i])
-            println("Atom $min_j: ", coords[:, min_j])
+            println("Origin Atom $i: ", coords[:, i])
+            println("Target Atom $min_j: ", coords[:, min_j])
+            println("Origin Atom (after trans) $i: ", new_coords[:, i])
+
             error("Error while initializing the symmetry group.")
         # else
         #     println("IRT[$min_j] = $i")
