@@ -157,10 +157,10 @@ Where ``\Phi_{ab}`` is the real space matrix, the ``b+\vec R`` indicates the cor
     The origin coordinates of the supercell in which the corresponding atom is
 """
 function matrix_r2q!(
-        matrix_q :: Array{Complex{T}, 3},
+        matrix_q :: AbstractArray{Complex{T}, 3},
         matrix_r :: AbstractMatrix{T},
         q :: Matrix{T},
-        itau :: Vector{I},
+        itau :: Vector{Int},
         R_lat :: Matrix{T}; buffer = default_buffer()) where T
     nq = size(q, 2)
     ndims = size(q, 1)
@@ -170,13 +170,12 @@ function matrix_r2q!(
     matrix_q .= T(0.0) 
 
     @no_escape buffer begin
-        ΔR⃗ = @alloc(T, ndim)
+        ΔR⃗ = @alloc(T, ndims)
 
-        phase_i = Complex(T)(-2π * 1im)
+        phase_i = Complex{T}(-2π * 1im)
 
         for iq in 1:nq
             for k_i in 1:nat
-                k = ndims*(k_i - 1) + k_α
                 @simd for h_i in 1:nat_sc
                     @views ΔR⃗ .= R_lat[:, k_i]
                     @views ΔR⃗ .-= R_lat[:, h_i]
@@ -185,8 +184,8 @@ function matrix_r2q!(
                     h_i_uc = itau[h_i]
 
                     exp_factor = exp(phase_i * q_dot_R)
-                    @views matrix_q[ndims*(h_i_uc - 1) : ndims * h_i_uc, ndims*(k_i - 1) : ndims*k_i, iq] .= matrix_r[ndims*(h_i - 1) : ndims * h_i, ndims*(k_i - 1) : ndims*k_i, iq]
-                    matrix_q[ndims*(h_i_uc - 1) : ndims * h_i_uc, ndims*(k_i - 1) : ndims*k_i, iq] .*= exp_factor
+                    @views matrix_q[(ndims*(h_i_uc - 1) + 1 : ndims * h_i_uc), (ndims*(k_i - 1) +1 : ndims*k_i), iq] .= matrix_r[(ndims*(h_i - 1) + 1 : ndims * h_i), (ndims*(k_i - 1) +1 : ndims*k_i)]
+                    matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1) + 1 : ndims*k_i), iq] .*= exp_factor
                 end
             end
         end
@@ -199,7 +198,7 @@ end
         matrix_r :: AbstractMatrix{T},
         matrix_q :: Array{Complex{T}, 3},
         q :: Matrix{T},
-        itau :: Vector{I},
+        itau :: Vector{Int},
         R_lat :: Matrix{T})
 
 Fourier transform a matrix from q space into r space
@@ -227,10 +226,10 @@ Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space 
     The origin coordinates of the supercell in which the corresponding atom is
 """
 function matrix_q2r!(
-        matrix_q :: Array{Complex{T}, 3},
         matrix_r :: AbstractMatrix{T},
+        matrix_q :: Array{Complex{T}, 3},
         q :: Matrix{T},
-        itau :: Vector{I},
+        itau :: Vector{Int},
         R_lat :: Matrix{T}; buffer = default_buffer()) where T
     nq = size(q, 2)
     ndims = size(q, 1)
@@ -240,13 +239,12 @@ function matrix_q2r!(
     matrix_r .= T(0.0) 
 
     @no_escape buffer begin
-        ΔR⃗ = @alloc(T, ndim)
+        ΔR⃗ = @alloc(T, ndims)
 
-        phase_i = Complex(T)(2π * 1im)
+        phase_i = Complex{T}(2π * 1im)
 
         for iq in 1:nq
             for k_i in 1:nat
-                k = ndims*(k_i - 1) + k_α
                 @simd for h_i in 1:nat_sc
                     @views ΔR⃗ .= R_lat[:, k_i]
                     @views ΔR⃗ .-= R_lat[:, h_i]
@@ -255,8 +253,8 @@ function matrix_q2r!(
                     h_i_uc = itau[h_i]
 
                     exp_factor = exp(phase_i * q_dot_R)
-                    @views matrix_r[ndims*(h_i - 1) : ndims * h_i, ndims*(k_i - 1) : ndims*k_i, iq] .= matrix_q[ndims*(h_i_uc - 1) : ndims * h_i_uc, ndims*(k_i - 1) : ndims*k_i, iq]
-                    @views matrix_r[ndims*(h_i - 1) : ndims * h_i, ndims*(k_i - 1) : ndims*k_i, iq] .*= exp_factor
+                    @views matrix_r[(ndims*(h_i - 1) +1 : ndims * h_i), (ndims*(k_i - 1) + 1 : ndims*k_i)] .= matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1)+1 : ndims*k_i), iq]
+                    @views matrix_r[(ndims*(h_i - 1) + 1 : ndims * h_i), (ndims*(k_i - 1) + 1 : ndims*k_i)] .*= exp_factor
                 end
             end
         end

@@ -148,6 +148,38 @@ function test_symmetrize_q_space(; verbose=false)
     for i in 1:length(u_next_back)
         @test u_next_back[1, i] ≈ u_next[i] rtol = 1e-7
     end
+
+
+
+    # APPLY SYMMETRY ON FC MATRIX
+    fc_trial = randn(Float64, ndims*nat_sc, ndims*nat_sc)
+    fc_trial .+= fc_trial'
+    dynq_trial = zeros(Complex{Float64}, ndims*nat, ndims*nat, n_sc)
+    fc_backward1 = zeros(Float64, ndims*nat_sc, ndims*nat_sc) 
+    dynq_back2 = zeros(Complex{Float64}, ndims*nat, ndims*nat, n_sc) 
+
+
+    # Perform the fourier transform of the dynamical matrix
+    AtomicSymmetries.matrix_r2q!(dynq_trial, fc_trial, q_vec, super_itau,
+                                 R_lat)
+    AtomicSymmetries.matrix_q2r!(fc_backward1, dynq_trial, q_vec, super_itau, R_lat)
+    AtomicSymmetries.matrix_r2q!(dynq_back2, fc_backward1, q_vec, super_itau,
+                                 R_lat)
+
+    # Test the fourier transform of the dynamical matrix
+    for iq in 1:n_sc
+        if verbose
+            @show dynq_trial[:,:, iq]
+            @show dynq_back2[:,:, iq]
+        end
+        for i in 1:ndims*nat
+            for j in 1:ndims*nat
+                @test dynq_trial[j, i, iq] ≈ dynq_back2[j, i, iq]
+            end
+        end
+    end
+
+
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
