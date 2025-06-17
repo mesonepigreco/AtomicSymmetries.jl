@@ -12,7 +12,7 @@ function test_symmetrize_q_space(; verbose=false)
     types = [1, 2]
 
     # Create a 4x4x4 supercell
-    supercell = [1, 1, 1]
+    supercell = [2, 2, 2]
 
     nat = size(positions, 2)
     ndims = size(positions, 1)
@@ -150,96 +150,119 @@ function test_symmetrize_q_space(; verbose=false)
     end
 
 
-
-    # APPLY SYMMETRY ON FC MATRIX
-    fc_trial = randn(Float64, ndims*nat_sc, ndims*nat_sc)
-    fc_trial .+= fc_trial'
+    rmat = randn(Float64, ndims*nat_sc, ndims*nat_sc)
+    fc_trial = zeros(Float64, ndims*nat_sc, ndims*nat_sc)
     dynq_trial = zeros(Complex{Float64}, ndims*nat, ndims*nat, n_sc)
     fc_backward1 = zeros(Float64, ndims*nat_sc, ndims*nat_sc) 
     fc_backward2 = zeros(Float64, ndims*nat_sc, ndims*nat_sc) 
     dynq_back2 = zeros(Complex{Float64}, ndims*nat, ndims*nat, n_sc) 
 
 
-    # Perform the fourier transform of the dynamical matrix
-    AtomicSymmetries.matrix_r2q!(dynq_trial, fc_trial, q_vec, super_itau,
-                                 R_lat)
-    AtomicSymmetries.matrix_q2r!(fc_backward1, dynq_trial, q_vec, super_itau, R_lat)
-    AtomicSymmetries.matrix_r2q!(dynq_back2, fc_backward1, q_vec, super_itau,
-                                 R_lat)
-
-    # Test the fourier transform of the dynamical matrix
-    for iq in 1:n_sc
-        for i in 1:ndims*nat
-            for j in 1:ndims*nat
-                @test dynq_trial[j, i, iq] ≈ dynq_back2[j, i, iq]
-            end
-        end
-    end
-
-
-    # TODO: Now we must test the symmetry application in Fourier space
-    # Apply the symmetry in the dynq matrix
-    dynq_back2 .= 0.0
-    AtomicSymmetries.apply_symmetry_matrixq!(dynq_back2,
-                                           dynq_trial,
-                                           uc_group.symmetries[i_sym],
-                                           uc_group.irt[i_sym],
-                                           irt_q)
-    AtomicSymmetries.matrix_q2r!(fc_trial, dynq_back2, q_vec, super_itau, R_lat)
-    # Now, fc_trial contains the dynamical matrix with the symmetry applied in q space
-    # Let us apply the symmetry also to fc_backward1 -> fc_backward2
-    AtomicSymmetries.apply_sym_fc!(fc_backward2, fc_backward1, uc_group.symmetries[i_sym], ndims, irt)
-
-    # Now we can compare fc_backward2 and fc_backward
-    print_next = true
-    if verbose && print_next
-        println("Testing the symmetry application of the force constant matrices")
-        println("Matrix")
-        for i in 1:ndims
-            println(uc_group.symmetries[i_sym][:, i])
-        end
-        @show irt_q
-        @show irt
-        println("Before | After symmetry (real)")
-        for i in 1:ndims*nat_sc
-            for j in 1:ndims*nat_sc
-                print(fc_backward1[j, i] > 0  ? " " : "")
-                print("$(round(fc_backward1[j, i]; digits=3)) ")
-            end
-            print("        ")
-            for j in 1:ndims*nat_sc
-                print(fc_backward2[j, i] > 0  ? " " : "")
-                print("$(round(fc_backward2[j, i]; digits=3)) ")
-            end
+    # APPLY SYMMETRY ON FC MATRIX
+    print_next = true #n_sc == 1
+    for i_sym in 1:length(uc_group)
+        if verbose
             println()
+            println("-----------------------")
+            println("Testing the symmetry $i_sym:")
+            println("-----------------------")
+            for k in 1:ndims
+                println(uc_group.symmetries[i_sym][k, :])
+            end
+            @show uc_group.translations[i_sym]
         end
 
-        println()
-        @show uc_group.irt[i_sym]
-        println("Before | After symmetry (qspace)")
+        dynq_trial .= 0
+        fc_backward1 .= 0
+        fc_backward2 .= 0
+        dynq_back2 .= 0
+        fc_trial .= rmat
+        fc_trial .+= fc_trial'
+
+        # Update irt
+        AtomicSymmetries.get_irt!(irt, super_positions, uc_group.symmetries[i_sym], uc_group.translations[i_sym] ./ supercell)
+
+        
+        # Perform the fourier transform of the dynamical matrix
+        AtomicSymmetries.matrix_r2q!(dynq_trial, fc_trial, q_vec, super_itau,
+                                     R_lat)
+        AtomicSymmetries.matrix_q2r!(fc_backward1, dynq_trial, q_vec, super_itau, R_lat)
+        AtomicSymmetries.matrix_r2q!(dynq_back2, fc_backward1, q_vec, super_itau,
+                                     R_lat)
+
+        # Test the fourier transform of the dynamical matrix
         for iq in 1:n_sc
-            println("IQ = $iq")
             for i in 1:ndims*nat
                 for j in 1:ndims*nat
-                    print(real(dynq_trial[j, i, iq]) > 0 ? " " : "")
-                    print("$(round(real(dynq_trial[j, i, iq]); digits=3)) ")
+                    @test dynq_trial[j, i, iq] ≈ dynq_back2[j, i, iq]
+                end
+            end
+        end
+
+
+        # TODO: Now we must test the symmetry application in Fourier space
+        # Apply the symmetry in the dynq matrix
+        dynq_back2 .= 0.0
+        AtomicSymmetries.apply_symmetry_matrixq!(dynq_back2,
+                                               dynq_trial,
+                                               uc_group.symmetries[i_sym],
+                                               uc_group.irt[i_sym],
+                                               irt_q)
+        AtomicSymmetries.matrix_q2r!(fc_trial, dynq_back2, q_vec, super_itau, R_lat)
+        # Now, fc_trial contains the dynamical matrix with the symmetry applied in q space
+        # Let us apply the symmetry also to fc_backward1 -> fc_backward2
+        AtomicSymmetries.apply_sym_fc!(fc_backward2, fc_backward1, uc_group.symmetries[i_sym], ndims, irt)
+
+        # Now we can compare fc_backward2 and fc_backward
+        if verbose && print_next
+            println("Testing the symmetry application of the force constant matrices")
+            println("Matrix")
+            for i in 1:ndims
+                println(uc_group.symmetries[i_sym][:, i])
+            end
+            @show irt_q
+            @show irt
+            println("Before | After symmetry (real)")
+            for i in 1:ndims*nat_sc
+                for j in 1:ndims*nat_sc
+                    print(fc_backward1[j, i] > 0  ? " " : "")
+                    print("$(round(fc_backward1[j, i]; digits=3)) ")
                 end
                 print("        ")
                 for j in 1:ndims*nat_sc
-                    print(real(dynq_back2[j, i, iq]) > 0 ? " " : "")
-                    print("$(round(real(dynq_back2[j, i, iq]); digits=3)) ")
+                    print(fc_backward2[j, i] > 0  ? " " : "")
+                    print("$(round(fc_backward2[j, i]; digits=3)) ")
                 end
                 println()
             end
-        end
-    end
 
-    for i in 1:ndims*nat_sc
-        for j in 1:ndims*nat_sc
-            if abs(fc_backward2[j, i]) < 1e-10
-                @test abs(fc_trial[j, i]) < 1e-10
-            else
-                @test fc_backward2[j, i] ≈ fc_trial[j, i]
+            println()
+            @show uc_group.irt[i_sym]
+            println("Before | After symmetry (qspace)")
+            for iq in 1:n_sc
+                println("IQ = $iq")
+                for i in 1:ndims*nat
+                    for j in 1:ndims*nat
+                        print(real(dynq_trial[j, i, iq]) > 0 ? " " : "")
+                        print("$(round(real(dynq_trial[j, i, iq]); digits=3)) ")
+                    end
+                    print("        ")
+                    for j in 1:ndims*nat
+                        print(real(dynq_back2[j, i, iq]) > 0 ? " " : "")
+                        print("$(round(real(dynq_back2[j, i, iq]); digits=3)) ")
+                    end
+                    println()
+                end
+            end
+        end
+
+        for i in 1:ndims*nat_sc
+            for j in 1:ndims*nat_sc
+                if abs(fc_backward2[j, i]) < 1e-10
+                    @test abs(fc_trial[j, i]) < 1e-10
+                else
+                    @test fc_backward2[j, i] ≈ fc_trial[j, i]
+                end
             end
         end
     end
@@ -251,7 +274,7 @@ function test_symmetrize_q_space(; verbose=false)
     AtomicSymmetries.matrix_q2r!(fc_trial, dynq_back2, q_vec, super_itau, R_lat)
 
     # Now let us perform the symmetrization directly in cartesian space
-    fc_backward2 = copy(fc_backward1)
+    fc_backward1 = copy(fc_backward1)
     sc_group.symmetrize_fc!(fc_backward2)
 
     if verbose && print_next
@@ -281,7 +304,7 @@ function test_symmetrize_q_space(; verbose=false)
                     print("$(round(real(dynq_trial[j, i, iq]); digits=3)) ")
                 end
                 print("        ")
-                for j in 1:ndims*nat_sc
+                for j in 1:ndims*nat
                     print(real(dynq_back2[j, i, iq]) > 0 ? " " : "")
                     print("$(round(real(dynq_back2[j, i, iq]); digits=3)) ")
                 end

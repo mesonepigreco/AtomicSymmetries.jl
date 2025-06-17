@@ -268,28 +268,35 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
 
             apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt; buffer=buffer)
             println("After symmetrization: sym $i")
-            @show sym_mat
-            @show irt
-            @show q_irt
-            @show original_q
-            @show tmp_matrix
+            # @show sym_mat
+            # @show irt
+            # @show q_irt
+            # @show original_q
+            # @show tmp_matrix
         end
 
         tmp_matrix ./= length(symmetries)
-        nothing
 
         # Apply the hermitianity
-        for iq in 1:n_q
-            @views tmp_matrix[:,:, iq] .+= tmp_matrix[:, :, iq]'
-        end
-        tmp_matrix ./= T(2)
-
-        # Apply the time-reversal symmetry
+        # for iq in 1:n_q
+        #     for h in 1:n_modes
+        #         for k in 1:n_modes
+        #             target_q[k,h, iq] = tmp_matrix[k, h, iq]
+        #             target_q[k,h, iq] += conj(tmp_matrix[h, k, iq])
+        #         end
+        #     end
+        # end
+        # target_q ./= T(2)
         target_q .= tmp_matrix
-        for iq in 1:n_q
-            @views target_q[:, :, iq] .+= conj.(tmp_matrix[:, :, minus_q_index[iq]]')
-        end
-        target_q ./= T(2)
+
+        # tmp_matrix .= target_q
+
+        # # Apply the time-reversal symmetry
+        # for iq in 1:n_q
+        #     @views target_q[:, :, iq] .+= conj.(tmp_matrix[:, :, minus_q_index[iq]]')
+        # end
+        # target_q ./= T(2)
+        nothing
     end
 end
 function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace; buffer = default_buffer())  where T
