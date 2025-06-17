@@ -242,8 +242,10 @@ function matrix_q2r!(
         ΔR⃗ = @alloc(T, ndims)
 
         phase_i = Complex{T}(2π * 1im)
+        tmp_matrix = @alloc(Complex{T}, ndims, ndims)
 
         for iq in 1:nq
+
             for k_i in 1:nat
                 @simd for h_i in 1:nat_sc
                     @views ΔR⃗ .= R_lat[:, k_i]
@@ -253,8 +255,10 @@ function matrix_q2r!(
                     h_i_uc = itau[h_i]
 
                     exp_factor = exp(phase_i * q_dot_R)
-                    @views matrix_r[(ndims*(h_i - 1) +1 : ndims * h_i), (ndims*(k_i - 1) + 1 : ndims*k_i)] .= matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1)+1 : ndims*k_i), iq]
-                    @views matrix_r[(ndims*(h_i - 1) + 1 : ndims * h_i), (ndims*(k_i - 1) + 1 : ndims*k_i)] .*= exp_factor
+                    #TODO: createa temporaney structure before adding the exponential otherwise itis not real
+                    tmp_matrix .= matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1)+1 : ndims*k_i), iq]
+                    tmp_matrix .*= exp_factor
+                    @views matrix_r[(ndims*(h_i - 1) +1 : ndims * h_i), (ndims*(k_i - 1) + 1 : ndims*k_i)] .= real(tmp_matrix)
                 end
             end
         end
