@@ -258,6 +258,7 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
 
     @no_escape buffer begin
         tmp_matrix = @alloc(Complex{T}, n_modes, n_modes, n_q)
+        tmp_matrix .= 0.0
         target_q .= Complex{T}(0.0)
 
         for i in 1:length(symmetries)
@@ -267,6 +268,9 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
 
             apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt; buffer=buffer)
             println("After symmetrization: sym $i")
+            @show sym_mat
+            @show irt
+            @show q_irt
             @show original_q
             @show tmp_matrix
         end
