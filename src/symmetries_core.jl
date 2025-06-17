@@ -1,3 +1,17 @@
+"""
+The abstract type GenericSymmetries can be employed to work with 
+functions that can apply symmetries exploiting the multiple dispatch.
+
+In general, derived types have as symmetries argument the 
+concrete type Symmetries.
+"""
+abstract type GenericSymmetries end
+
+get_dimensions(sym :: GenericSymmetries) = sym.symmetries.dimension
+get_n_atoms(sym :: GenericSymmetries) = sym.symmetries.n_particles
+get_nsymmetries(sym :: GenericSymmetries) = length(sym.symmetries)
+Base.length(sym :: GenericSymmetries) = Base.length(sym.symmetries)
+
 @doc raw"""
     mutable struct Symmetries{T}
 
@@ -21,7 +35,7 @@ The name irt stands for "index of the representative of the transformation".
 and it is in line with the notation used in the Quantum Espresso and the CellConstructor codes.
 
 """
-mutable struct Symmetries{T}
+mutable struct Symmetries{T} <: GenericSymmetries
     symmetries :: Vector{Matrix{T}}
     dimension :: Int
     n_particles :: Int
@@ -36,6 +50,9 @@ get_nsymmetries(sym :: Symmetries) = length(sym.symmetries)
 get_dimensions(sym :: Symmetries) = sym.dimension
 get_n_atoms(sym :: Symmetries) = sym.n_particles
 Base.length(sym :: Symmetries) = get_nsymmetries(sym)
+
+# Apply usual functions to derived types
+
 
 
 # Override the Base.isempty function to check if the Symmetries object is empty

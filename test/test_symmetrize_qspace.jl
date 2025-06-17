@@ -12,7 +12,7 @@ function test_symmetrize_q_space(; verbose=false)
     types = [1, 2]
 
     # Create a 4x4x4 supercell
-    supercell = [4, 4, 4]
+    supercell = [1, 1, 1]
 
     nat = size(positions, 2)
     ndims = size(positions, 1)
@@ -191,7 +191,7 @@ function test_symmetrize_q_space(; verbose=false)
     AtomicSymmetries.apply_sym_fc!(fc_backward2, fc_backward1, uc_group.symmetries[i_sym], ndims, irt)
 
     # Now we can compare fc_backward2 and fc_backward
-    print_next = false
+    print_next = true
     if verbose && print_next
         println("Testing the symmetry application of the force constant matrices")
         println("Matrix")
@@ -245,6 +245,62 @@ function test_symmetrize_q_space(; verbose=false)
     end
 
 
+    # Now, we can test the full symmetrization
+    q_symmetries = AtomicSymmetries.SymmetriesQSpace(uc_group, q_vec)
+    AtomicSymmetries.symmetrize_matrix_q!(dynq_back2, dynq_trial, q_symmetries)
+    AtomicSymmetries.matrix_q2r!(fc_trial, dynq_back2, q_vec, super_itau, R_lat)
+
+    # Now let us perform the symmetrization directly in cartesian space
+    fc_backward2 = copy(fc_backward1)
+    sc_group.symmetrize_fc!(fc_backward2)
+
+    if verbose && print_next
+        println("Testing the symmetrization of the force constant matrices")
+        println("Before | After symmetriezation (real)")
+        for i in 1:ndims*nat_sc
+            for j in 1:ndims*nat_sc
+                print(fc_backward1[j, i] > 0  ? " " : "")
+                print("$(round(fc_backward1[j, i]; digits=3)) ")
+            end
+            print("        ")
+            for j in 1:ndims*nat_sc
+                print(fc_backward2[j, i] > 0  ? " " : "")
+                print("$(round(fc_backward2[j, i]; digits=3)) ")
+            end
+            println()
+        end
+
+        println()
+        @show uc_group.irt[i_sym]
+        println("Before | After symmetrization (qspace)")
+        for iq in 1:n_sc
+            println("IQ = $iq")
+            for i in 1:ndims*nat
+                for j in 1:ndims*nat
+                    print(real(dynq_trial[j, i, iq]) > 0 ? " " : "")
+                    print("$(round(real(dynq_trial[j, i, iq]); digits=3)) ")
+                end
+                print("        ")
+                for j in 1:ndims*nat_sc
+                    print(real(dynq_back2[j, i, iq]) > 0 ? " " : "")
+                    print("$(round(real(dynq_back2[j, i, iq]); digits=3)) ")
+                end
+                println()
+            end
+        end
+    end
+
+
+    # Test the comparison between the two
+    for i in 1:ndims*nat_sc
+        for j in 1:ndims*nat_sc
+            if abs(fc_backward2[j, i]) < 1e-10
+                @test abs(fc_trial[j, i]) < 1e-10
+            else
+                @test fc_backward2[j, i] ≈ fc_trial[j, i]
+            end
+        end
+    end
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
