@@ -60,7 +60,7 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
     n_atoms = size(target_matrix, 1) ÷ n_dims
 
     @no_escape buffer begin
-        work = @alloc(T, n_dims, n_dims)
+        work = @alloc(Complex{T}, n_dims, n_dims)
         for iq in 1:nq
             iq_s = irt_q[iq]
             for i ∈ 1:n_atoms
@@ -70,7 +70,7 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
                     @views mul!(work, 
                                 original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq_s], 
                                 sym, T(1.0), T(0.0))
-                    @views mul!(result[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq], 
+                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq], 
                         sym', work, 1.0, 1.0)
                 end
             end
