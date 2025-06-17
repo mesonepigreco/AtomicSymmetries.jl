@@ -12,7 +12,7 @@ function test_symmetrize_q_space(; verbose=false)
     types = [1, 2]
 
     # Create a 4x4x4 supercell
-    supercell = [1, 1, 1]
+    supercell = [4, 4, 4]
 
     nat = size(positions, 2)
     ndims = size(positions, 1)
@@ -179,6 +179,7 @@ function test_symmetrize_q_space(; verbose=false)
 
     # TODO: Now we must test the symmetry application in Fourier space
     # Apply the symmetry in the dynq matrix
+    dynq_back2 .= 0.0
     AtomicSymmetries.apply_symmetry_matrixq!(dynq_back2,
                                            dynq_trial,
                                            uc_group.symmetries[i_sym],
@@ -190,30 +191,42 @@ function test_symmetrize_q_space(; verbose=false)
     AtomicSymmetries.apply_sym_fc!(fc_backward2, fc_backward1, uc_group.symmetries[i_sym], ndims, irt)
 
     # Now we can compare fc_backward2 and fc_backward
-    if verbose 
+    print_next = false
+    if verbose && print_next
         println("Testing the symmetry application of the force constant matrices")
+        println("Matrix")
+        for i in 1:ndims
+            println(uc_group.symmetries[i_sym][:, i])
+        end
+        @show irt_q
+        @show irt
         println("Before | After symmetry (real)")
         for i in 1:ndims*nat_sc
             for j in 1:ndims*nat_sc
+                print(fc_backward1[j, i] > 0  ? " " : "")
                 print("$(round(fc_backward1[j, i]; digits=3)) ")
             end
             print("        ")
             for j in 1:ndims*nat_sc
+                print(fc_backward2[j, i] > 0  ? " " : "")
                 print("$(round(fc_backward2[j, i]; digits=3)) ")
             end
             println()
         end
 
         println()
+        @show uc_group.irt[i_sym]
         println("Before | After symmetry (qspace)")
         for iq in 1:n_sc
             println("IQ = $iq")
             for i in 1:ndims*nat
                 for j in 1:ndims*nat
+                    print(real(dynq_trial[j, i, iq]) > 0 ? " " : "")
                     print("$(round(real(dynq_trial[j, i, iq]); digits=3)) ")
                 end
                 print("        ")
                 for j in 1:ndims*nat_sc
+                    print(real(dynq_back2[j, i, iq]) > 0 ? " " : "")
                     print("$(round(real(dynq_back2[j, i, iq]); digits=3)) ")
                 end
                 println()
