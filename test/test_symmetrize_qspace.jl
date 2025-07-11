@@ -6,10 +6,16 @@ function test_symmetrize_q_space(; verbose=false)
     cell = [a 0.0 0.0
             0.0 a 0.0
             0.0 0.0 a]
-    positions = [0.0 0.6
-                 0.0 0.6
-                 0.0 0.6]
-    types = [1, 2]
+    positions = zeros(Float64, 3, 1)
+    positions .= [0.0 
+                 0.0 
+                 0.0 ]
+    types = [1]
+
+    # positions = [0.0 0.6
+    #              0.0 0.6
+    #              0.0 0.6]
+    # types = [1, 2]
 
     # Create a 4x4x4 supercell
     supercell = [2, 2, 2]
@@ -266,6 +272,8 @@ function test_symmetrize_q_space(; verbose=false)
             end
         end
     end
+    # At this point, the application of individual symmetry operation works in fourier space.
+    # However, we must still check if the full symmetrization works
 
 
     # Now, we can test the full symmetrization
