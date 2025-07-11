@@ -1,3 +1,17 @@
+"""
+The abstract type GenericSymmetries can be employed to work with 
+functions that can apply symmetries exploiting the multiple dispatch.
+
+In general, derived types have as symmetries argument the 
+concrete type Symmetries.
+"""
+abstract type GenericSymmetries end
+
+get_dimensions(sym :: GenericSymmetries) = sym.symmetries.dimension
+get_n_atoms(sym :: GenericSymmetries) = sym.symmetries.n_particles
+get_nsymmetries(sym :: GenericSymmetries) = length(sym.symmetries)
+Base.length(sym :: GenericSymmetries) = Base.length(sym.symmetries)
+
 @doc raw"""
     mutable struct Symmetries{T}
 
@@ -6,21 +20,22 @@ The structure containing the symmetries of the system.
 Once the symmetries have been initialized, 
 the symmetrize_fc! and symmetrize_centroid! functions can be used to symmetrize the force constant matrix and the centroid.
 
-The exchange_symmetry is a vector of length n_particles, 
+The `exchange_symmetry` is a vector of length `n_particles`, 
 where each element identify the id of the particle.
 If two ids are equal, the particles are indistinguishable.
 
 irt[i][j] is the index of the atom that is equivalent to the j-th atom before the symmetry is applied.
 The expression is
-$$
+
+``
 v_{\text{irt[i]}} = S v_i
-$$
+``
 
 The name irt stands for "index of the representative of the transformation".
 and it is in line with the notation used in the Quantum Espresso and the CellConstructor codes.
 
 """
-mutable struct Symmetries{T}
+mutable struct Symmetries{T} <: GenericSymmetries
     symmetries :: Vector{Matrix{T}}
     dimension :: Int
     n_particles :: Int
@@ -35,6 +50,9 @@ get_nsymmetries(sym :: Symmetries) = length(sym.symmetries)
 get_dimensions(sym :: Symmetries) = sym.dimension
 get_n_atoms(sym :: Symmetries) = sym.n_particles
 Base.length(sym :: Symmetries) = get_nsymmetries(sym)
+
+# Apply usual functions to derived types
+
 
 
 # Override the Base.isempty function to check if the Symmetries object is empty
@@ -711,7 +729,7 @@ function get_irt!(irt, coords, matrix, translation)
     nat = size(coords, 2)
     ndims = size(coords, 1)
 
-    # debugvalue = sum(translation.^2) > 1e-8
+    #debugvalue = sum(translation.^2) > 1e-8
     debugvalue = false
     dist = 0
 
@@ -739,10 +757,12 @@ function get_irt!(irt, coords, matrix, translation)
                 break
             end
         end
-        if min_dist > 0.1
+        if min_dist > 0.001
             println("The distance between the atoms is too large: $min_dist")
-            println("Atom $i: ", coords[:, i])
-            println("Atom $min_j: ", coords[:, min_j])
+            println("Origin Atom $i: ", coords[:, i])
+            println("Target Atom $min_j: ", coords[:, min_j])
+            println("Origin Atom (after trans) $i: ", new_coords[:, i])
+
             error("Error while initializing the symmetry group.")
         # else
         #     println("IRT[$min_j] = $i")
@@ -792,3 +812,22 @@ Returns the number of symmetries in the primitive cell (neglecting pure translat
 function get_n_symmetries_primitive_cell(sym :: Symmetries) :: Int
     get_nsymmetries(sym) ÷ get_n_translations(sym)
 end
+
+
+@doc raw"""
+    get_translations(symmetry :: GenericSymmetries) :: AbstractVector
+
+Return a vector of indices to which each atom is flipped for each translation.
+"""
+function get_translations(symmetries :: Symmetries) :: Vector{Vector{Int}}
+    good_translations = []
+    for i in 1:length(symmetries)
+        if isapprox(symmetries.symmetries[i], I)
+            push!(good_translations, i)
+        end
+    end
+
+    nat_sc = length(symmetries.irt[1])
+    return [symmetries.irt[i] for i in good_translations]
+end
+get_translations(x :: GenericSymmetries) = get_translations(x.symmetries)
