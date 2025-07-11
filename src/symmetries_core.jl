@@ -812,3 +812,22 @@ Returns the number of symmetries in the primitive cell (neglecting pure translat
 function get_n_symmetries_primitive_cell(sym :: Symmetries) :: Int
     get_nsymmetries(sym) ÷ get_n_translations(sym)
 end
+
+
+@doc raw"""
+    get_translations(symmetry :: GenericSymmetries) :: AbstractVector
+
+Return a vector of indices to which each atom is flipped for each translation.
+"""
+function get_translations(symmetries :: Symmetries) :: Vector{Vector{Int}}
+    good_translations = []
+    for i in 1:length(symmetries)
+        if isapprox(symmetries.symmetries[i], I)
+            push!(good_translations, i)
+        end
+    end
+
+    nat_sc = length(symmetries.irt[1])
+    return [symmetries.irt[i] for i in good_translations]
+end
+get_translations(x :: GenericSymmetries) = get_translations(x.symmetries)
