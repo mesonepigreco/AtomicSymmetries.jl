@@ -241,6 +241,7 @@ function matrix_q2r!(
 
     matrix_r .= T(0.0) 
 
+    apply_translations = false
     if size(matrix_r, 2) > nat*ndims
         apply_translations = true
         if size(matrix_r, 2) != nat_sc*ndims
@@ -290,7 +291,7 @@ function matrix_q2r!(
                     i_t = trans[i]
                     for j in 1:nat_sc
                         j_t = trans[j]
-                        @views new_tmp_matrix[(ndims*(j_t-1)+1:ndims*j_t), (ndims*(i-1)+1:ndims*i)] .+=  
+                        @views new_tmp_matrix[(ndims*(j-1)+1:ndims*j), (ndims*(i-1)+1:ndims*i)] .+=  
                             matrix_r[(ndims*(j_t-1)+1:ndims*j_t), (ndims*(i_t-1)+1:ndims*i_t)]
                     end
                 end
