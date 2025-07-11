@@ -6,21 +6,21 @@ function test_symmetrize_q_space(; verbose=false)
     b = 2.93
     c = 2.60
     cell = [a 0.0 0.0
-            0.0 b 0.0
-            0.0 0.0 c]
-    positions = zeros(Float64, 3, 1)
-    positions .= [0.0 
-                 0.0 
-                 0.0 ]
-    types = [1]
+            0.0 a 0.0
+            0.0 0.0 a]
+    # positions = zeros(Float64, 3, 1)
+    # positions .= [0.0 
+    #              0.0 
+    #              0.0 ]
+    # types = [1]
 
-    # positions = [0.0 0.6
-    #              0.0 0.6
-    #              0.0 0.6]
-    # types = [1, 2]
+    positions = [0.0 0.6
+                 0.0 0.6
+                 0.0 0.6]
+    types = [1, 2]
 
     # Create a 4x4x4 supercell
-    supercell = [2, 1, 1]
+    supercell = [4, 4, 4]
 
     nat = size(positions, 2)
     ndims = size(positions, 1)
@@ -341,5 +341,5 @@ function test_symmetrize_q_space(; verbose=false)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
-    test_symmetrize_q_space(; verbose=true)
+    test_symmetrize_q_space(; verbose=false)
 end
