@@ -8,9 +8,10 @@
 
 Fourier transform a vector from real space and q space.
 
-$$
+``
+\displaystyle
 v_k(\vec q) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{-i 2\pi \vec R\cdot \vec q} v_k(\vec R)
-$$
+``
 
 
 ## Parameters
@@ -74,9 +75,10 @@ end
 
 Fourier transform a vector from q space to real space.
 
-$$
+``
+\displaystyle
 v_k(\vec R) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{+i 2\pi \vec R\cdot \vec q} v_k(\vec q)
-$$
+``
 
 
 ## Parameters
@@ -136,9 +138,10 @@ end
 
 Fourier transform a matrix from real to q space
 
-$$
+``
+\displaystyle
 M_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
-$$
+``
 
 Where ``\Phi_{ab}`` is the real space matrix, the ``b+\vec R`` indicates the corresponding atom in the supercell displaced by ``\vec R``. 
 
@@ -203,10 +206,11 @@ end
 
 Fourier transform a matrix from q space into r space
 
-$$
+``
+\displaystyle
 \Phi_{ab} = \frac{1}{N_q} \sum_{\vec q}
 M_{ab}(\vec  q) e^{2i\pi \vec q\cdot[\vec R(a) - \vec R(b)]}
-$$
+``
 
 Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space matrix.
 
