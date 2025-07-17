@@ -215,7 +215,7 @@ Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space 
 
 
 - matrix_r : (3*nat_sc, 3*nat)
-    The target matrix in real space (supercell)
+    The target matrix in real space (supercell). If the second dimension is 3nat_sc, we also apply the translations
 - matrix_q : (3nat, 3nat, nq) 
     The original matrix in Fourier space.
 - q_tot : (3, nq)
@@ -224,19 +224,38 @@ Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space 
     The correspondance for each atom in the supercell with the atom in the primitive cell.
 - R_lat : (3, nat_sc)
     The origin coordinates of the supercell in which the corresponding atom is
+- translations : Vector{Vector{Int}}
+    The itau correspondance for each translational vector. Its size must be equal to the number of q point and
+    contain all possible translations
 """
 function matrix_q2r!(
         matrix_r :: AbstractMatrix{T},
         matrix_q :: Array{Complex{T}, 3},
         q :: Matrix{T},
         itau :: Vector{Int},
-        R_lat :: Matrix{T}; buffer = default_buffer()) where T
+        R_lat :: Matrix{T}; translations :: Union{Nothing, AbstractVector} = nothing, buffer = default_buffer()) where T
     nq = size(q, 2)
     ndims = size(q, 1)
     nat_sc = size(matrix_r, 1) ÷ ndims
     nat = size(matrix_q, 1) ÷ ndims
 
     matrix_r .= T(0.0) 
+
+    apply_translations = false
+    if size(matrix_r, 2) > nat*ndims
+        apply_translations = true
+        if size(matrix_r, 2) != nat_sc*ndims
+            println("Error, dimension mismatch in matrix_r: $(size(matrix_r))")
+        end
+
+        # Check if the translations are provided
+        if translations == nothing
+            println("Error, if the size of the matrix_r is a square, then it is required to provide the translations.")
+        end
+
+        # Check if the translations have the correct lenght
+        @assert length(translations) == nq "Error, the number of translations ($(length(translations))) must be equal with the number of q-points ($nq)"
+    end
 
     @no_escape buffer begin
         ΔR⃗ = @alloc(T, ndims)
@@ -256,11 +275,29 @@ function matrix_q2r!(
 
                     exp_factor = exp(phase_i * q_dot_R)
                     #TODO: createa temporaney structure before adding the exponential otherwise itis not real
-                    tmp_matrix .= matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1)+1 : ndims*k_i), iq]
+                    @views tmp_matrix .= matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1)+1 : ndims*k_i), iq]
                     tmp_matrix .*= exp_factor
                     @views matrix_r[(ndims*(h_i - 1) +1 : ndims * h_i), (ndims*(k_i - 1) + 1 : ndims*k_i)] .= real(tmp_matrix)
                 end
             end
+        end
+
+        # Check if we need to apply the translations
+        if apply_translations
+            new_tmp_matrix = @alloc(T, nat_sc*ndims, nat_sc*ndims)
+            new_tmp_matrix .= T(0)
+            for trans in translations
+                for i in 1:nat_sc
+                    i_t = trans[i]
+                    for j in 1:nat_sc
+                        j_t = trans[j]
+                        @views new_tmp_matrix[(ndims*(j-1)+1:ndims*j), (ndims*(i-1)+1:ndims*i)] .+=  
+                            matrix_r[(ndims*(j_t-1)+1:ndims*j_t), (ndims*(i_t-1)+1:ndims*i_t)]
+                    end
+                end
+            end
+
+            matrix_r .= new_tmp_matrix
         end
         nothing
     end
