@@ -1,9 +1,15 @@
 
 @doc raw"""
     vector_r2q!(
-        v_q :: Array{Complex{T}, 3},
-        v_sc :: Matrix{T},
+        v_q :: AbstractArray{Complex{T}, 3},
+        v_sc :: AbstractMatrix{T},
         q_tot :: Matrix{T})
+    vector_r2q!(v_q :: AbstractArray{Complex{T}, 2},
+        v_sc :: AbstractVector{T},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T}
+    ) where {T <: AbstractFloat, I <: Integer}
 
 
 Fourier transform a vector from real space and q space.
@@ -12,6 +18,14 @@ Fourier transform a vector from real space and q space.
 \displaystyle
 v_k(\vec q) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{-i 2\pi \vec R\cdot \vec q} v_k(\vec R)
 ``
+
+It works both on a single vector and on a series of vector. 
+NOTE: In the latter case, the number
+of configurations must be in the first column. 
+This is not standard, 
+but implemented in this way for performance reasons as
+it is the most convenient memory rapresentation for vectorizing the
+average calculation.
 
 
 ## Parameters
@@ -28,8 +42,8 @@ v_k(\vec q) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{-i 2\pi \vec R\cdot \vec q} v_k(\
     The origin coordinates of the supercell in which the atom is
 """
 function vector_r2q!(
-        v_q :: Array{Complex{T}, 3},
-        v_sc :: Matrix{T},
+        v_q :: AbstractArray{Complex{T}, 3},
+        v_sc :: AbstractMatrix{T},
         q :: Matrix{T},
         itau :: Vector{I},
         R_lat :: Matrix{T}
@@ -63,14 +77,30 @@ function vector_r2q!(
 
     v_q ./= √(nq)
 end
+function vector_r2q!(v_q :: AbstractMatrix{Complex{T}},
+        v_sc :: AbstractVector{T},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T}
+    ) where {T <: AbstractFloat, I <: Integer}
+    vector_r2q!(reshape(v_q, 1, size(v_q, 1), :), reshape(v_sc, 1, :), q, itau, R_lat)
+end
+
 
 @doc raw"""
     vector_q2r!(
-        v_sc :: Matrix{T},
-        v_q :: Array{Complex{T}, 3},
+        v_sc :: AbstractMatrix{T},
+        v_q :: AbstractArray{Complex{T}, 3},
         q_tot :: Matrix{T},
         itau :: Vector{I},
         R_lat :: Matrix{T}) where {T <: AbstractFloat, I <: Integer}
+    function vector_q2r!(
+        v_sc :: AbstractVector{T},
+        v_q :: AbstractMatrix{Complex{T}},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T}
+    ) where {T <: AbstractFloat, I <: Integer}
 
 
 Fourier transform a vector from q space to real space.
@@ -79,6 +109,10 @@ Fourier transform a vector from q space to real space.
 \displaystyle
 v_k(\vec R) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{+i 2\pi \vec R\cdot \vec q} v_k(\vec q)
 ``
+
+It can be applied both to a single vector and in an ensemble.
+NOTE: In the latter case, the configurations must be stored as the first index.
+This choice is made for performance reason in computing averages (exploiting vectorization).
 
 
 ## Parameters
@@ -127,6 +161,17 @@ function vector_q2r!(
     v_sc .= real(tmp_vector)
     v_sc ./= √(nq)
 end
+function vector_q2r!(
+        v_sc :: AbstractVector{T},
+        v_q :: AbstractMatrix{Complex{T}},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T}
+    ) where {T <: AbstractFloat, I <: Integer}
+    n_modes = size(v_q, 1)
+    vector_q2r!(reshape(v_sc, 1, :), reshape(v_q, 1, n_modes, :), q, itau, R_lat)
+end
+
 
 @doc raw"""
     matrix_r2q!(
