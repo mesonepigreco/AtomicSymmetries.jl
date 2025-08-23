@@ -30,15 +30,15 @@ average calculation.
 
 ## Parameters
 
-- v_q : (n_configs, 3nat, nq) 
+- `v_q` : (n_configs, 3nat, nq) 
     The target vector in Fourier space.
-- v_sc : (n_configs, 3*nat_sc)
+- `v_sc` : (n_configs, 3*nat_sc)
     The original vector in real space
-- q_tot : (3, nq)
+- `q_tot` : (3, nq)
     The list of q vectors
-- itau : (nat_sc)
+- `itau` : (nat_sc)
     The correspondance for each atom in the supercell with the atom in the primitive cell.
-- R_lat : (3, nat_sc)
+- `R_lat` : (3, nat_sc)
     The origin coordinates of the supercell in which the atom is
 """
 function vector_r2q!(
@@ -118,15 +118,15 @@ This choice is made for performance reason in computing averages (exploiting vec
 ## Parameters
 
 
-- v_sc : (n_configs, 3*nat_sc)
+- `v_sc` : (`n_configs, 3*nat_sc`)
     The target vector in real space
-- v_q : (n_configs, nq, 3*nat) 
+- `v_q` : `(n_configs, nq, 3*nat)`
     The original vector in Fourier space. 
-- q_tot : (3, nq)
+- `q_tot : (3, nq)`
     The list of q vectors
-- itau : (nat_sc)
+- `itau : (nat_sc)`
     The correspondance for each atom in the supercell with the atom in the primitive cell.
-- R_lat : (3, nat_sc)
+- `R_lat : (3, nat_sc)`
     The origin coordinates of the supercell in which the atom is
 """
 function vector_q2r!(
