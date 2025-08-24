@@ -16,9 +16,9 @@ $$
 ## Parameters
 
 - v_q : (n_configs, 3nat, nq) 
-    The target vector in Fourier space.
+    The target vector in Fourier space. Optionally, n_configs could be omitted if transforming only 1 vector
 - v_sc : (n_configs, 3*nat_sc)
-    The original vector in real space
+    The original vector in real space. Optionally, n_configs could be omitted if transforming only 1 vector
 - q_tot : (3, nq)
     The list of q vectors
 - itau : (nat_sc)
@@ -27,11 +27,11 @@ $$
     The origin coordinates of the supercell in which the atom is
 """
 function vector_r2q!(
-        v_q :: Array{Complex{T}, 3},
-        v_sc :: Matrix{T},
-        q :: Matrix{T},
-        itau :: Vector{I},
-        R_lat :: Matrix{T}
+        v_q :: AbstractArray{Complex{T}, 3},
+        v_sc :: AbstractMatrix{T},
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T}
     ) where {T <: AbstractFloat, I <: Integer}
 
     nq = size(q, 2)
@@ -62,6 +62,17 @@ function vector_r2q!(
 
     v_q ./= √(nq)
 end
+function vector_r2q!(
+        v_q :: AbstractArray{Complex{T}, 2},
+        v_sc :: AbstractVector{T},
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T}
+    ) where {T <: AbstractFloat, I <: Integer}
+
+    vector_r2q!(reshape(v_q, 1, size(v_q)...), reshape(v_sc, 1, size(v_sc)...), q, itau, R_lat)
+end
+
 
 @doc raw"""
     vector_q2r!(
@@ -94,11 +105,11 @@ $$
     The origin coordinates of the supercell in which the atom is
 """
 function vector_q2r!(
-        v_sc :: Matrix{T},
-        v_q :: Array{Complex{T}, 3},
-        q :: Matrix{T},
-        itau :: Vector{I},
-        R_lat :: Matrix{T}
+        v_sc :: AbstractMatrix{T},
+        v_q :: AbstractArray{Complex{T}, 3},
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T}
     ) where {T <: AbstractFloat, I <: Integer}
 
     nq = size(q, 2)
