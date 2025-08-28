@@ -815,9 +815,18 @@ end
 
 
 @doc raw"""
-    get_translations(symmetry :: GenericSymmetries) :: AbstractVector
+    get_translations(symmetry :: GenericSymmetries) :: Vector{Vector{Int}}
 
-Return a vector of indices to which each atom is flipped for each translation.
+Return a vector containin, for each element, 
+the corrispondence of couple of atoms mapped by the
+respective translational symmetry.
+
+This function extract the translations from the global symmetry object.
+
+## Parameters
+
+- `symmetries :: Symmetries` : The symmmetry object that contains the symmetries of the structure.
+
 """
 function get_translations(symmetries :: Symmetries) :: Vector{Vector{Int}}
     good_translations = []

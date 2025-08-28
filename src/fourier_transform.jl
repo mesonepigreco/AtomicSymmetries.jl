@@ -94,9 +94,9 @@ $$
 
 
 - v_sc : (n_configs, 3*nat_sc)
-    The target vector in real space
+    The target vector in real space. Optionally, n_configs can be omitted
 - v_q : (n_configs, nq, 3*nat) 
-    The original vector in Fourier space. 
+    The original vector in Fourier space. Optionally, n_configs can be omitted
 - q_tot : (3, nq)
     The list of q vectors
 - itau : (nat_sc)
@@ -136,6 +136,18 @@ function vector_q2r!(
     v_sc .= real(tmp_vector)
     v_sc ./= √(nq)
 end
+function vector_q2r!(
+        v_sc :: AbstractVector{T},
+        v_q :: AbstractArray{Complex{T}, 2},
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T}
+    ) where {T <: AbstractFloat, I <: Integer}
+
+    vector_q2r!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat)
+end
+
+
 
 @doc raw"""
     matrix_r2q!(
@@ -237,7 +249,7 @@ Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space 
     The origin coordinates of the supercell in which the corresponding atom is
 - translations : Vector{Vector{Int}}
     The itau correspondance for each translational vector. Its size must be equal to the number of q point and
-    contain all possible translations
+    contain all possible translations. This can be obtained from the `get_translations` subroutine. 
 """
 function matrix_q2r!(
         matrix_r :: AbstractMatrix{T},
@@ -256,12 +268,12 @@ function matrix_q2r!(
     if size(matrix_r, 2) > nat*ndims
         apply_translations = true
         if size(matrix_r, 2) != nat_sc*ndims
-            println("Error, dimension mismatch in matrix_r: $(size(matrix_r))")
+            error("Error, dimension mismatch in matrix_r: $(size(matrix_r))")
         end
 
         # Check if the translations are provided
         if translations == nothing
-            println("Error, if the size of the matrix_r is a square, then it is required to provide the translations.")
+            error("Error in matrix_q2r! : if the size of the matrix_r is a square, then it is required to provide the translations.")
         end
 
         # Check if the translations have the correct lenght
