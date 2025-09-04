@@ -32,7 +32,14 @@ export get_symmetry_group_from_spglib,
        to_primitive_cell_cryst!,
        to_primitive_cell_cart!,
        apply_sparse_symmetry,
-       apply_sparse_symmetry!
+       apply_sparse_symmetry!,
+       vector_r2q!, vector_q2r!,
+       matrix_r2q!, matrix_q2r!,
+       SymmetriesQSpace, 
+       apply_symmetry_vectorq!, apply_symmetry_matrixq!,
+       symmetrize_vector_q!, symmetrize_matrix_q!
+
+
 
 
 end # module AtomicSymmetries

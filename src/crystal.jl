@@ -76,6 +76,8 @@ end
 
 @doc """
     cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: AbstractMatrix{T}, cell :: AbstractMatrix{T}; cart_to_cryst :: Bool = true, buffer=default_buffer()) where T
+    cart_cryst_matrix_conversion!(dest :: AbstractArray{Complex{T}, 3}, matrix :: AbstractArray{Complex{T}, 3}, cell :: AbstractMatrix{T}; cart_to_cryst = true, buffer=default_buffer()) where T
+
 
 Convert a matrix `matrix` from cartesian to crystal coordinates.
 The result are stored in `dest`.
@@ -86,6 +88,9 @@ Otherwise, the conversion is from crystal to cartesian coordinates.
 
 This function exploits Bumper stack memory allocations. 
 It is possible to pass the stack as an argument with the buffer keyword
+
+It works either with supercell real force constant matrices, and with force constant matrices directly written in q space.
+In the latter case, the dimension of the matrix is expected to be (n_modes, n_modes, nq)
 """
 function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: AbstractMatrix{T}, cell :: AbstractMatrix{T}; cart_to_cryst = true, buffer=default_buffer()) where T
     dim = size(cell, 1)
@@ -116,6 +121,16 @@ function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: Abst
             end
         end
         nothing
+    end
+end
+function cart_cryst_matrix_conversion!(dest :: AbstractArray{Complex{T}, 3}, 
+        matrix :: AbstractArray{Complex{T}, 3}, cell :: AbstractMatrix{T}; cart_to_cryst = true, buffer=default_buffer()) where T
+    nq = size(dest, 3)
+    @assert nq == size(matrix, 3)
+
+    for iq in 1:nq
+        @views cart_cryst_matrix_conversion!(dest[:, :, iq], matrix[:, :, iq], cell; 
+                                             cart_to_cryst = cart_to_cryst, buffer=buffer)
     end
 end
 

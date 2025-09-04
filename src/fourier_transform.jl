@@ -1,29 +1,44 @@
 
 @doc raw"""
     vector_r2q!(
-        v_q :: Array{Complex{T}, 3},
-        v_sc :: Matrix{T},
+        v_q :: AbstractArray{Complex{T}, 3},
+        v_sc :: AbstractMatrix{T},
         q_tot :: Matrix{T})
+    vector_r2q!(v_q :: AbstractArray{Complex{T}, 2},
+        v_sc :: AbstractVector{T},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T}
+    ) where {T <: AbstractFloat, I <: Integer}
 
 
 Fourier transform a vector from real space and q space.
 
-$$
+``
+\displaystyle
 v_k(\vec q) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{-i 2\pi \vec R\cdot \vec q} v_k(\vec R)
-$$
+``
+
+It works both on a single vector and on a series of vector. 
+NOTE: In the latter case, the number
+of configurations must be in the first column. 
+This is not standard, 
+but implemented in this way for performance reasons as
+it is the most convenient memory rapresentation for vectorizing the
+average calculation.
 
 
 ## Parameters
 
-- v_q : (n_configs, 3nat, nq) 
+- `v_q` : (n_configs, 3nat, nq) 
     The target vector in Fourier space. Optionally, n_configs could be omitted if transforming only 1 vector
-- v_sc : (n_configs, 3*nat_sc)
+- `v_sc` : (n_configs, 3*nat_sc)
     The original vector in real space. Optionally, n_configs could be omitted if transforming only 1 vector
-- q_tot : (3, nq)
+- `q_tot` : (3, nq)
     The list of q vectors
-- itau : (nat_sc)
+- `itau` : (nat_sc)
     The correspondance for each atom in the supercell with the atom in the primitive cell.
-- R_lat : (3, nat_sc)
+- `R_lat` : (3, nat_sc)
     The origin coordinates of the supercell in which the atom is
 """
 function vector_r2q!(
@@ -76,32 +91,44 @@ end
 
 @doc raw"""
     vector_q2r!(
-        v_sc :: Matrix{T},
-        v_q :: Array{Complex{T}, 3},
+        v_sc :: AbstractMatrix{T},
+        v_q :: AbstractArray{Complex{T}, 3},
         q_tot :: Matrix{T},
         itau :: Vector{I},
         R_lat :: Matrix{T}) where {T <: AbstractFloat, I <: Integer}
+    function vector_q2r!(
+        v_sc :: AbstractVector{T},
+        v_q :: AbstractMatrix{Complex{T}},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T}
+    ) where {T <: AbstractFloat, I <: Integer}
 
 
 Fourier transform a vector from q space to real space.
 
-$$
+``
+\displaystyle
 v_k(\vec R) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{+i 2\pi \vec R\cdot \vec q} v_k(\vec q)
-$$
+``
+
+It can be applied both to a single vector and in an ensemble.
+NOTE: In the latter case, the configurations must be stored as the first index.
+This choice is made for performance reason in computing averages (exploiting vectorization).
 
 
 ## Parameters
 
 
-- v_sc : (n_configs, 3*nat_sc)
+- `v_sc` : (n_configs, 3*nat_sc)
     The target vector in real space. Optionally, n_configs can be omitted
-- v_q : (n_configs, nq, 3*nat) 
+- `v_q` : (n_configs, nq, 3*nat) 
     The original vector in Fourier space. Optionally, n_configs can be omitted
-- q_tot : (3, nq)
+- `q_tot` : (3, nq)
     The list of q vectors
-- itau : (nat_sc)
+- `itau : (nat_sc)`
     The correspondance for each atom in the supercell with the atom in the primitive cell.
-- R_lat : (3, nat_sc)
+- `R_lat : (3, nat_sc)`
     The origin coordinates of the supercell in which the atom is
 """
 function vector_q2r!(
@@ -148,7 +175,6 @@ function vector_q2r!(
 end
 
 
-
 @doc raw"""
     matrix_r2q!(
         matrix_q :: Array{Complex{T}, 3},
@@ -159,9 +185,10 @@ end
 
 Fourier transform a matrix from real to q space
 
-$$
+``
+\displaystyle
 M_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
-$$
+``
 
 Where ``\Phi_{ab}`` is the real space matrix, the ``b+\vec R`` indicates the corresponding atom in the supercell displaced by ``\vec R``. 
 
@@ -226,10 +253,11 @@ end
 
 Fourier transform a matrix from q space into r space
 
-$$
+``
+\displaystyle
 \Phi_{ab} = \frac{1}{N_q} \sum_{\vec q}
 M_{ab}(\vec  q) e^{2i\pi \vec q\cdot[\vec R(a) - \vec R(b)]}
-$$
+``
 
 Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space matrix.
 
