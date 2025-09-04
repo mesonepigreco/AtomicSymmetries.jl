@@ -1,4 +1,4 @@
-# Symmetries in Q space
+# Symmetries in Fourier space
 
 The symmetrization can be performed also in Fourier space.
 This is implemented now for force-constant dynamical matrices and vectors (displacements, forces, ...).
@@ -108,5 +108,3 @@ symmetrize_matrix_q!
 ```
 
 
-
- 

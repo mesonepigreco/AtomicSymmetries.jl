@@ -31,9 +31,9 @@ average calculation.
 ## Parameters
 
 - `v_q` : (n_configs, 3nat, nq) 
-    The target vector in Fourier space.
+    The target vector in Fourier space. Optionally, n_configs could be omitted if transforming only 1 vector
 - `v_sc` : (n_configs, 3*nat_sc)
-    The original vector in real space
+    The original vector in real space. Optionally, n_configs could be omitted if transforming only 1 vector
 - `q_tot` : (3, nq)
     The list of q vectors
 - `itau` : (nat_sc)
@@ -44,9 +44,9 @@ average calculation.
 function vector_r2q!(
         v_q :: AbstractArray{Complex{T}, 3},
         v_sc :: AbstractMatrix{T},
-        q :: Matrix{T},
-        itau :: Vector{I},
-        R_lat :: Matrix{T}
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T}
     ) where {T <: AbstractFloat, I <: Integer}
 
     nq = size(q, 2)
@@ -77,13 +77,15 @@ function vector_r2q!(
 
     v_q ./= √(nq)
 end
-function vector_r2q!(v_q :: AbstractMatrix{Complex{T}},
+function vector_r2q!(
+        v_q :: AbstractArray{Complex{T}, 2},
         v_sc :: AbstractVector{T},
-        q :: Matrix{T},
-        itau :: Vector{I},
-        R_lat :: Matrix{T}
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T}
     ) where {T <: AbstractFloat, I <: Integer}
-    vector_r2q!(reshape(v_q, 1, size(v_q, 1), :), reshape(v_sc, 1, :), q, itau, R_lat)
+
+    vector_r2q!(reshape(v_q, 1, size(v_q)...), reshape(v_sc, 1, size(v_sc)...), q, itau, R_lat)
 end
 
 
@@ -118,11 +120,11 @@ This choice is made for performance reason in computing averages (exploiting vec
 ## Parameters
 
 
-- `v_sc` : (`n_configs, 3*nat_sc`)
-    The target vector in real space
-- `v_q` : `(n_configs, nq, 3*nat)`
-    The original vector in Fourier space. 
-- `q_tot : (3, nq)`
+- `v_sc` : (n_configs, 3*nat_sc)
+    The target vector in real space. Optionally, n_configs can be omitted
+- `v_q` : (n_configs, nq, 3*nat) 
+    The original vector in Fourier space. Optionally, n_configs can be omitted
+- `q_tot` : (3, nq)
     The list of q vectors
 - `itau : (nat_sc)`
     The correspondance for each atom in the supercell with the atom in the primitive cell.
@@ -130,11 +132,11 @@ This choice is made for performance reason in computing averages (exploiting vec
     The origin coordinates of the supercell in which the atom is
 """
 function vector_q2r!(
-        v_sc :: Matrix{T},
-        v_q :: Array{Complex{T}, 3},
-        q :: Matrix{T},
-        itau :: Vector{I},
-        R_lat :: Matrix{T}
+        v_sc :: AbstractMatrix{T},
+        v_q :: AbstractArray{Complex{T}, 3},
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T}
     ) where {T <: AbstractFloat, I <: Integer}
 
     nq = size(q, 2)
@@ -163,13 +165,13 @@ function vector_q2r!(
 end
 function vector_q2r!(
         v_sc :: AbstractVector{T},
-        v_q :: AbstractMatrix{Complex{T}},
-        q :: Matrix{T},
-        itau :: Vector{I},
-        R_lat :: Matrix{T}
+        v_q :: AbstractArray{Complex{T}, 2},
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T}
     ) where {T <: AbstractFloat, I <: Integer}
-    n_modes = size(v_q, 1)
-    vector_q2r!(reshape(v_sc, 1, :), reshape(v_q, 1, n_modes, :), q, itau, R_lat)
+
+    vector_q2r!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat)
 end
 
 
@@ -275,7 +277,7 @@ Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space 
     The origin coordinates of the supercell in which the corresponding atom is
 - translations : Vector{Vector{Int}}
     The itau correspondance for each translational vector. Its size must be equal to the number of q point and
-    contain all possible translations
+    contain all possible translations. This can be obtained from the `get_translations` subroutine. 
 """
 function matrix_q2r!(
         matrix_r :: AbstractMatrix{T},
@@ -294,12 +296,12 @@ function matrix_q2r!(
     if size(matrix_r, 2) > nat*ndims
         apply_translations = true
         if size(matrix_r, 2) != nat_sc*ndims
-            println("Error, dimension mismatch in matrix_r: $(size(matrix_r))")
+            error("Error, dimension mismatch in matrix_r: $(size(matrix_r))")
         end
 
         # Check if the translations are provided
         if translations == nothing
-            println("Error, if the size of the matrix_r is a square, then it is required to provide the translations.")
+            error("Error in matrix_q2r! : if the size of the matrix_r is a square, then it is required to provide the translations.")
         end
 
         # Check if the translations have the correct lenght

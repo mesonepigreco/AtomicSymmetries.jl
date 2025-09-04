@@ -1,0 +1,36 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main ]   # or 'master' or your dev branch
+    tags: ['*']
+  pull_request:
+
+jobs:
+  build:
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: read
+      statuses: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - name: Install dependencies
+        shell: julia --color=yes --project=docs {0}
+        run: |
+          using Pkg
+          Pkg.develop(PackageSpec(path=pwd()))
+          Pkg.instantiate()
+      - name: Build and deploy
+        run: |
+          cd docs
+          julia --color=yes --project make.jl
+          cd ..
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # for pushing to same repo
+
