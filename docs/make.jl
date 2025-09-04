@@ -3,7 +3,7 @@ push!(LOAD_PATH, "../src/")
 using AtomicSymmetries
 using Documenter
 
-makedocs(sitename="AtomicSymmetries.jl Documentation", format=[Documenter.HTML(), Documenter.LaTeX()],
+makedocs(sitename="AtomicSymmetries.jl Documentation", format=[Documenter.HTML()],
          pages = ["Home" => "index.md", 
                   "Symmetries in Q space" => "fourier_symmetries.md"],
          repo = "https://github.com/mesonepigreco/AtomicSymmetries.jl/blob/{commit}{path}#{line}"
