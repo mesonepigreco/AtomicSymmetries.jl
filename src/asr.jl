@@ -37,17 +37,20 @@ end
 Apply the ASR constraint to a rank-2 tensor of dimension `asr.dimension`.
 
 The ASR is applied using the following formula to the $\Phi$ matrix:
-$$
+
+```math
 \Phi' = (I - \sum_t \left| t\right>\left< t\right|) \Phi(I - \sum_t \left| t\right>\left< t\right|)
-$$
+```
+
 where $\left |t\right>$ is the $t$-th global translation vector (1 for each dimension). 
 
 The implementation follows the equation
-$$
+
+```math
 \Phi_{ij}^{\alpha\beta}' = \Phi_{ij}^{\alpha\beta} - \frac{1}{N_{\text{at}}}\sum_{tk} \Phi_{ik}^{\alpha t}\delta_{\beta t}
 - \frac{1}{N_{\text{at}}}\sum_{tk} \Phi_{kj}^{t\beta}\delta_{\alpha t}
 + \frac{1}{N_{\text{at}}^2}\sum_{t_1t_2hk} \Phi_{hk}^{t_1t_2}\delta_{\alpha t_1}\delta_{\beta t_2}
-$$
+```
 
 which ensures that the translational invariance is mathematically preserved.
 
