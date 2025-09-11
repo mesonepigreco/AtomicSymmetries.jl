@@ -1,7 +1,9 @@
 using Test
 using AtomicSymmetries
+using Random
 
 function test_symmetrize_q_space(; verbose=false)
+    Random.seed!(1234)
     a = 2.87
     b = 2.93
     c = 2.60
@@ -20,7 +22,8 @@ function test_symmetrize_q_space(; verbose=false)
     types = [1, 2]
 
     # Create a 4x4x4 supercell
-    supercell = [4, 4, 4]
+    #supercell = [4, 4, 4]
+    supercell = [2, 2, 2]
 
     nat = size(positions, 2)
     ndims = size(positions, 1)
@@ -188,6 +191,12 @@ function test_symmetrize_q_space(; verbose=false)
         fc_trial .= rmat
         fc_trial .+= fc_trial'
 
+        # Recompute the irt_q
+        AtomicSymmetries.get_irt_q!(irt_q, q_vec, uc_group.symmetries[i_sym])
+
+        # Apply the translations
+        apply_translations!(fc_trial, translations)
+
         # Update irt
         AtomicSymmetries.get_irt!(irt, super_positions, uc_group.symmetries[i_sym], uc_group.translations[i_sym] ./ supercell)
 
@@ -207,6 +216,13 @@ function test_symmetrize_q_space(; verbose=false)
                 end
             end
         end
+
+        for i in 1:ndims*nat_sc
+            for j in 1:ndims*nat_sc
+                @test fc_trial[j, i] ≈ fc_backward1[j, i]
+            end
+        end
+
 
 
         # TODO: Now we must test the symmetry application in Fourier space
@@ -247,6 +263,8 @@ function test_symmetrize_q_space(; verbose=false)
 
             println()
             @show uc_group.irt[i_sym]
+            @show uc_group.symmetries[i_sym]
+            @show irt_q
             println("Before | After symmetry (qspace)")
             for iq in 1:n_sc
                 println("IQ = $iq")
