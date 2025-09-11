@@ -70,5 +70,6 @@ end
 
 @testset "Fourier symmetries" begin
     include("test_symmetrize_qspace.jl")
+    test_fourier_matrix()
     test_symmetrize_q_space()
 end

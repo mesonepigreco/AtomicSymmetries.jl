@@ -1,7 +1,9 @@
 using Test
 using AtomicSymmetries
+using Random
 
 function test_symmetrize_q_space(; verbose=false)
+    Random.seed!(1234)
     a = 2.87
     b = 2.93
     c = 2.60
@@ -20,7 +22,8 @@ function test_symmetrize_q_space(; verbose=false)
     types = [1, 2]
 
     # Create a 4x4x4 supercell
-    supercell = [4, 4, 4]
+    #supercell = [4, 4, 4]
+    supercell = [2, 2, 2]
 
     nat = size(positions, 2)
     ndims = size(positions, 1)
@@ -188,6 +191,12 @@ function test_symmetrize_q_space(; verbose=false)
         fc_trial .= rmat
         fc_trial .+= fc_trial'
 
+        # Recompute the irt_q
+        AtomicSymmetries.get_irt_q!(irt_q, q_vec, uc_group.symmetries[i_sym])
+
+        # Apply the translations
+        apply_translations!(fc_trial, translations)
+
         # Update irt
         AtomicSymmetries.get_irt!(irt, super_positions, uc_group.symmetries[i_sym], uc_group.translations[i_sym] ./ supercell)
 
@@ -207,6 +216,13 @@ function test_symmetrize_q_space(; verbose=false)
                 end
             end
         end
+
+        for i in 1:ndims*nat_sc
+            for j in 1:ndims*nat_sc
+                @test fc_trial[j, i] ≈ fc_backward1[j, i]
+            end
+        end
+
 
 
         # TODO: Now we must test the symmetry application in Fourier space
@@ -247,6 +263,8 @@ function test_symmetrize_q_space(; verbose=false)
 
             println()
             @show uc_group.irt[i_sym]
+            @show uc_group.symmetries[i_sym]
+            @show irt_q
             println("Before | After symmetry (qspace)")
             for iq in 1:n_sc
                 println("IQ = $iq")
@@ -340,6 +358,55 @@ function test_symmetrize_q_space(; verbose=false)
     end
 end
 
+
+function test_fourier_matrix(; verbose=false)
+    # Define the values
+    q_tot = [0.0 0.5; 0.0 0.0; 0.0 0.0]
+    R_lat = [0.0 0.0 1.0 1.0; 0.0 0.0 0.0 0.0; 0.0 0.0 0.0 0.0]
+    itau = [1, 2, 1, 2]
+    translations = [[1, 2, 3, 4], [3, 4, 1, 2]]
+
+    
+    # Why this does not pass???
+    phi_r = [6.944077713497171e-9 -3.7725100300087146e-24 -2.7916441566992746e-24 -2.6502766015545497e-9 -3.549208423473465e-24 8.664561479838025e-25 -1.64352451038805e-9 1.431307838807254e-25 2.4957276696667897e-24 -2.6502766015545567e-9 3.796838388233213e-24 -1.0515594427328438e-24; -3.7725100300087146e-24 1.0247441921697906e-8 -3.1270747218558373e-24 2.775336528332932e-24 -3.52850276853492e-9 -1.239793161881364e-23 -4.8300034362667475e-24 -3.1904363846278865e-9 -5.78965596508118e-24 1.7438715494390113e-24 -3.528502768535103e-9 1.6466259623049095e-23; -2.7916441566992746e-24 -3.1270747218558373e-24 1.1692015910447308e-8 -1.2896862337118913e-24 -3.66031626862765e-24 -2.5527304141603894e-9 1.9423782165784355e-24 -1.2451775904376244e-24 -6.5865550821265495e-9 -3.4492648217963074e-24 8.484309948448528e-24 -2.5527304141603745e-9; -2.6502766015545497e-9 2.775336528332932e-24 -1.2896862337118913e-24 6.745007606626527e-9 -3.365587283602352e-24 -1.3395244122046136e-24 -2.6502766015545576e-9 6.2068579361313445e-24 3.516698839572828e-24 -1.4444544035174181e-9 -4.6071021130034915e-24 -5.164822483403609e-24; -3.549208423473465e-24 -3.52850276853492e-9 -3.66031626862765e-24 -3.365587283602352e-24 1.0692874210984586e-8 1.8481131247656558e-23 1.6762961146945018e-24 -3.528502768534917e-9 9.575401897091406e-24 5.047160113039026e-24 -3.635868673914753e-9 -2.6335213548191474e-23; 8.664561479838025e-25 -1.239793161881364e-23 -2.5527304141603894e-9 -1.3395244122046136e-24 1.8481131247656558e-23 1.0537531217909593e-8 7.048074030485992e-25 -8.776504679457027e-24 -2.5527304141603803e-9 2.598641203715694e-24 -5.847207241187604e-25 -5.432070389588828e-9; -1.64352451038805e-9 -4.8300034362667475e-24 1.9423782165784355e-24 -2.6502766015545576e-9 1.6762961146945018e-24 7.048074030485992e-25 6.944077713497157e-9 3.652955011663864e-24 -2.6772896034501183e-24 -2.6502766015545563e-9 2.8595707022475537e-24 -3.7211657035649032e-25; 1.431307838807254e-25 -3.1904363846278865e-9 -1.2451775904376244e-24 6.2068579361313445e-24 -3.528502768534917e-9 -8.776504679457027e-24 3.652955011663864e-24 1.024744192169784e-8 -1.0498413543432898e-23 -1.1074661113428624e-23 -3.5285027685350364e-9 1.8238540043773188e-23; 2.4957276696667897e-24 -5.78965596508118e-24 -6.5865550821265495e-9 3.516698839572828e-24 9.575401897091406e-24 -2.5527304141603803e-9 -2.6772896034501183e-24 -1.0498413543432898e-23 1.1692015910447286e-8 1.4782376420899345e-25 6.156807344352184e-24 -2.5527304141603724e-9; -2.6502766015545567e-9 1.7438715494390113e-24 -3.4492648217963074e-24 -1.4444544035174181e-9 5.047160113039026e-24 2.598641203715694e-24 -2.6502766015545563e-9 -1.1074661113428624e-23 1.4782376420899345e-25 6.745007606626523e-9 3.2970552721212182e-24 5.8633744795800024e-24; 3.796838388233213e-24 -3.528502768535103e-9 8.484309948448528e-24 -4.6071021130034915e-24 -3.635868673914753e-9 -5.847207241187604e-25 2.8595707022475537e-24 -3.5285027685350364e-9 6.156807344352184e-24 3.2970552721212182e-24 1.06928742109849e-8 -4.98744144435483e-24; -1.0515594427328438e-24 1.6466259623049095e-23 -2.5527304141603745e-9 -5.164822483403609e-24 -2.6335213548191474e-23 -5.432070389588828e-9 -3.7211657035649032e-25 1.8238540043773188e-23 -2.5527304141603724e-9 5.8633744795800024e-24 -4.98744144435483e-24 1.0537531217909603e-8]
+    
+    phi_q = zeros(Complex{Float64}, 6, 6, 2) 
+    phi_q2r = similar(phi_r)
+    phi_q2r .= 0
+    phi_q_bis = similar(phi_q)
+
+    # Convert in q space
+    matrix_r2q!(phi_q, phi_r, q_tot, itau, R_lat)
+
+    # Convert back in r space
+    matrix_q2r!(phi_q2r, phi_q, q_tot, itau, R_lat;
+                translations)
+
+    matrix_r2q!(phi_q_bis, phi_q2r, q_tot, itau, R_lat)
+
+    for iq in 1:2
+        for k in 1:6
+            for h in 1:6
+                @test phi_q_bis[h, k, iq] ≈ phi_q[h, k, iq] atol = 1e-14
+            end
+        end
+    end
+    if verbose
+        println("Q pass the test")
+    end
+
+    # Check if they are equal
+    for i in 1:12
+        for j in 1:12
+            @test phi_q2r[i, j] ≈ phi_r[i, j]  atol = 1e-14
+        end
+    end
+    if verbose
+        println("R pass the test")
+    end
+end
+
 if abspath(PROGRAM_FILE) == @__FILE__
+    test_fourier_matrix(; verbose=true)
     test_symmetrize_q_space(; verbose=false)
 end

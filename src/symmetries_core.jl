@@ -840,3 +840,63 @@ function get_translations(symmetries :: Symmetries) :: Vector{Vector{Int}}
     return [symmetries.irt[i] for i in good_translations]
 end
 get_translations(x :: GenericSymmetries) = get_translations(x.symmetries)
+
+
+
+@doc raw"""
+    apply_translations!(matrix :: Matrix{T}, translations :: Vector{Vector{Int}};
+
+Enforce the translational symmetries on a supercell matrix.
+The translational symmetries are encoded by the translations vector.
+Each element of the translations vectors contains the maps of the atomic
+indices mapped one into the other by the specific translation.
+
+```math
+M_{ab}' = \frac{1}{N_t}\sum_{t} M_{t(a)t(b)}
+```
+
+where ``t(a)`` is the atom in which the translation ``t`` maps the ``a`` atom.
+ 
+## Parameters
+
+- `matrix` : the in-place modified matrix
+- `translations` : the array of the translations
+- `buffer` : The stack buffer for caching (Bumper.jl) [optional]
+"""
+function apply_translations!(matrix :: Matrix{T}, translations :: Vector{Vector{Int}};
+        buffer = default_buffer()) where T
+    # Get the number of atoms
+    nat = length(translations[1])
+    n_modes = size(matrix, 1)
+    n_dims = n_modes ÷ nat
+
+    @no_escape buffer begin
+        tmpmat = @alloc(T, n_modes, n_modes) 
+        tmpmat .= 0
+        
+        for trans in translations
+            for i in 1:nat
+                start_i = n_dims * (i - 1) + 1
+                end_i = n_dims * i
+
+                start_t_i = n_dims * (trans[i] - 1) + 1
+                end_t_i = n_dims * trans[i]
+
+                for j in 1:nat
+                    start_j = n_dims * (j - 1) + 1
+                    end_j = n_dims * j
+
+                    start_t_j = n_dims * (trans[j] - 1) + 1
+                    end_t_j = n_dims * trans[j]
+
+                    @views tmpmat[start_i:end_i, start_j:end_j] .+= matrix[start_t_i:end_t_i, start_t_j:end_t_j]
+                end
+            end
+        end
+
+        tmpmat ./= T(length(translations))
+        matrix .= tmpmat
+        nothing
+    end
+end
+

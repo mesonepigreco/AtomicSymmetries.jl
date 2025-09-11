@@ -185,25 +185,24 @@ end
 
 Fourier transform a matrix from real to q space
 
-``
-\displaystyle
-M_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
-``
+```math
+M_{ab}(\vec q) = \sum_{\vec R} e^{-2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
+```
 
 Where ``\Phi_{ab}`` is the real space matrix, the ``b+\vec R`` indicates the corresponding atom in the supercell displaced by ``\vec R``. 
 
 
 ## Parameters
 
-- matrix_q : (3nat, 3nat, nq) 
+- `matrix_q` : (3nat, 3nat, nq) 
     The target matrix in Fourier space.
-- matrix_r : (3*nat_sc, 3*nat)
+- `matrix_r` : (3*nat_sc, 3*nat)
     The original matrix in real space (supercell)
-- q_tot : (3, nq)
+- `q_tot` : (3, nq)
     The list of q vectors
-- itau : (nat_sc)
+- `itau` : (nat_sc)
     The correspondance for each atom in the supercell with the atom in the primitive cell.
-- R_lat : (3, nat_sc)
+- `R_lat` : (3, nat_sc)
     The origin coordinates of the supercell in which the corresponding atom is
 """
 function matrix_r2q!(
@@ -221,6 +220,7 @@ function matrix_r2q!(
 
     @no_escape buffer begin
         ΔR⃗ = @alloc(T, ndims)
+        tmp_mat = @alloc(Complex{T}, ndims, ndims)
 
         phase_i = Complex{T}(-2π * 1im)
 
@@ -234,8 +234,11 @@ function matrix_r2q!(
                     h_i_uc = itau[h_i]
 
                     exp_factor = exp(phase_i * q_dot_R)
-                    @views matrix_q[(ndims*(h_i_uc - 1) + 1 : ndims * h_i_uc), (ndims*(k_i - 1) +1 : ndims*k_i), iq] .= matrix_r[(ndims*(h_i - 1) + 1 : ndims * h_i), (ndims*(k_i - 1) +1 : ndims*k_i)]
-                    matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1) + 1 : ndims*k_i), iq] .*= exp_factor
+                    @views tmp_mat .= matrix_r[(ndims*(h_i - 1) + 1 : ndims * h_i), (ndims*(k_i - 1) +1 : ndims*k_i)]
+                    tmp_mat .*= exp_factor 
+
+                    @views matrix_q[(ndims*(h_i_uc - 1) + 1 : ndims * h_i_uc), (ndims*(k_i - 1) +1 : ndims*k_i), iq] .+= tmp_mat 
+                    #matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1) + 1 : ndims*k_i), iq] .*= exp_factor
                 end
             end
         end
@@ -327,8 +330,8 @@ function matrix_q2r!(
                     exp_factor = exp(phase_i * q_dot_R)
                     #TODO: createa temporaney structure before adding the exponential otherwise itis not real
                     @views tmp_matrix .= matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1)+1 : ndims*k_i), iq]
-                    tmp_matrix .*= exp_factor
-                    @views matrix_r[(ndims*(h_i - 1) +1 : ndims * h_i), (ndims*(k_i - 1) + 1 : ndims*k_i)] .= real(tmp_matrix)
+                    tmp_matrix .*= exp_factor / nq
+                    @views matrix_r[(ndims*(h_i - 1) +1 : ndims * h_i), (ndims*(k_i - 1) + 1 : ndims*k_i)] .+= real(tmp_matrix)
                 end
             end
         end
