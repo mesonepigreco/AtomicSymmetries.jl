@@ -200,6 +200,9 @@ Since the symmetrization also imposes translational symmetries, the result is al
 
 The symmetrized vector is supposed to be a displacement (so no translations are applied)
 
+NOTE: The provided vector must be in crystal coordinates
+To symmetrize a vector incartesian coordinates, see the routine `symmetrize_vector_cartesian_q!`.
+
 
 ## Parameters
 
@@ -232,6 +235,54 @@ function symmetrize_vector_q!(target_gamma :: AbstractVector{T}, original_q :: A
         nothing
     end
 end
+
+@doc raw"""
+    symmetrize_vector_cartesian_q!(vector_q_cart:: AbstractArray{Complex{T}, 2}, cell :: Matrix{T}, symmetries :: SymmetriesQSpace; buffer = default_buffer()) where {T}
+
+Perform the symmetrization of a vector (overwriting it) in cartesian coordinates.
+This is the go-to subroutine for performing symmetrization of vectors in q space.
+
+
+## Parameters
+
+- `vector_q_cart` : in-place symmetrize vector (q-space, cartesian coordinates)
+- `cell` : 3x3 matrix of the primitive cell (column-based)
+- `symmetries` : Symmetries in Q space
+- `buffer` : Optional, Bumper stack buffer (caching)
+
+"""
+function symmetrize_vector_cartesian_q!(vector_q_cart:: AbstractArray{Complex{T}, 2}, cell :: Matrix{T}, symmetries :: SymmetriesQSpace; buffer = default_buffer()) where {T}
+    # 
+    n_modes = size(vector_q_cart, 1)
+    n_q = size(vector_q_cart, 2)
+    n_dims = size(cell, 1)
+
+    @no_escape buffer begin
+        vector_cryst = @alloc(T, n_modes)
+        target_vect = @alloc(T, n_modes)
+        target_vect .= 0
+
+        get_crystal_coords!(reshape(vector_cryst, n_dims, :),
+                            reshape(view(vector_q_cart[:, 1]), n_dims, :),
+                            cell;
+                            buffer=buffer)
+        vector_q_cart[:, 1] .= vector_cryst
+
+        symmetrize_vector_q!(target_vect, vector_q_cart, 
+                             symmetries.symmetries,
+                             symmetries.irt_q;
+                             buffer=buffer)
+
+        # Convert back in cartesian space
+        get_cartesian_coords!(reshape(vector_cryst, n_dims, :),
+                              reshape(target_vect, n_dims, :),
+                              cell)
+
+        vector_q_cart[:, 1] .= vector_cryst
+        nothing
+    end
+end
+
 
 @doc raw"""
     symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, symmetries :: Symmetries, irt_q :: Vector{Vector{Int}}; buffer = default_buffer() where T
@@ -306,6 +357,53 @@ function symmetrize_matrix_q!(matrix_q :: AbstractArray{Complex{T}, 3}, q_symmet
     symmetrize_matrix_q!(matrix_q, matrix_q, q_symmetries; buffer=buffer)
 end
 
+
+@doc raw"""
+    symmetrize_matrix_cartesian_q!(matrix_q :: AbstractArray{Complex{T}, 3}, cell :: Matrix{T}, q_symmetries :: SymmetriesQSpace; buffer=default_buffer()) where T
+
+Enforce the symmetries on the provided matrix (q-space), modifying it in-place.
+The provided matrix must be in Cartesian Coordinates.
+
+
+## Parameters
+
+- `matrix_q` : The matrix to be symmetrized. Size (nmodes, nmodes, nq)
+- `cell` : The 3x3 primitive cell (column ordering)
+- `q_symmetries` : The symmetry group (q-space)
+- `buffer` : Optional, stack for Bumper to cache allocations.
+"""
+function symmetrize_matrix_cartesian_q!(matrix_q :: AbstractArray{Complex{T}, 3}, cell :: Matrix{T}, q_symmetries :: SymmetriesQSpace; buffer=default_buffer()) where T
+
+    n_q = size(matrix_q, 3)
+
+    @no_escape buffer begin
+        matrix_cryst_q = @alloc(T, size(matrix_q)...)
+        matrix_cryst_q .= 0
+
+        # Convert in crystal coordinates
+        for i in 1:n_q
+            @views cart_cryst_matrix_conversion!(matrix_cryst_q[:, :, i],
+                                                 matrix_q[:, :, i],
+                                                 cell;
+                                                 cart_to_cryst = true,
+                                                 buffer=buffer)
+        end
+
+        # Perform the symmetrization
+        symmetrize_matrix_q!(matrix_cryst_q, q_symmetries; buffer)
+
+        # Convert back in cartesian coordinates
+        for i in 1:n_q
+            @views cart_cryst_matrix_conversion!(matrix_q[:, :, i],
+                                                 matrix_cryst_q[:, :, i],
+                                                 cell;
+                                                 cart_to_cryst = false,
+                                                 buffer=buffer)
+        end
+
+        nothing
+    end
+end
 
 
 
