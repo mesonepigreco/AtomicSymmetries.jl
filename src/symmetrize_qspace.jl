@@ -381,25 +381,21 @@ function symmetrize_matrix_cartesian_q!(matrix_q :: AbstractArray{Complex{T}, 3}
         matrix_cryst_q .= 0
 
         # Convert in crystal coordinates
-        for i in 1:n_q
-            @views cart_cryst_matrix_conversion!(matrix_cryst_q[:, :, i],
-                                                 matrix_q[:, :, i],
-                                                 cell;
-                                                 cart_to_cryst = true,
-                                                 buffer=buffer)
-        end
+        cart_cryst_matrix_conversion!(matrix_cryst_q,
+                                      matrix_q,
+                                      cell;
+                                      cart_to_cryst = true,
+                                      buffer=buffer)
 
         # Perform the symmetrization
         symmetrize_matrix_q!(matrix_cryst_q, q_symmetries; buffer)
 
         # Convert back in cartesian coordinates
-        for i in 1:n_q
-            @views cart_cryst_matrix_conversion!(matrix_q[:, :, i],
-                                                 matrix_cryst_q[:, :, i],
-                                                 cell;
-                                                 cart_to_cryst = false,
-                                                 buffer=buffer)
-        end
+        cart_cryst_matrix_conversion!(matrix_q,
+                                      matrix_cryst_q,
+                                      cell;
+                                      cart_to_cryst = false,
+                                      buffer=buffer)
 
         nothing
     end

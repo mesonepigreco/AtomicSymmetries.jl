@@ -92,7 +92,7 @@ It is possible to pass the stack as an argument with the buffer keyword
 It works either with supercell real force constant matrices, and with force constant matrices directly written in q space.
 In the latter case, the dimension of the matrix is expected to be (n_modes, n_modes, nq)
 """
-function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: AbstractMatrix{T}, cell :: AbstractMatrix{T}; cart_to_cryst = true, buffer=default_buffer()) where T
+function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{U}, matrix :: AbstractMatrix{U}, cell :: AbstractMatrix{T}; cart_to_cryst = true, buffer=default_buffer()) where {U <: Union{T, Complex{T}}, T}
     dim = size(cell, 1)
     nmodes = size(matrix, 1)
     n_atoms = nmodes ÷ dim
