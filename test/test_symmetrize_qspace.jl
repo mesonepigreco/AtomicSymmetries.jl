@@ -356,6 +356,11 @@ function test_symmetrize_q_space(; verbose=false)
             end
         end
     end
+
+
+    # Finally, test that the execution of the symmetrization in real space works as (crash test coverage).
+    symmetrize_vector_cartesian_q!(q_next[1,:, :], cell, q_symmetries)
+    symmetrize_matrix_cartesian_q!(dynq_back2, cell, q_symmetries)
 end
 
 

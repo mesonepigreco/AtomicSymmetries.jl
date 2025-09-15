@@ -35,7 +35,7 @@ Base.isempty(x :: SymmetriesQSpace) = isempty(x.symmetries)
 
 
 @doc raw"""
-    apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, original_vector :: AbstractMatrix{Complex{T}}, symmetry_operation :: AbstractMatrix{U}, irt :: Vector{Int}, q_points :: AbstractMatrix{T})
+    apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, original_vector :: AbstractMatrix{Complex{T}}, symmetry_operation :: AbstractMatrix{U}, irt :: Vector{Int}, irt_q:: AbstractVector{Int})
 
 
 Apply the symmetry on the original vector in q space
@@ -214,26 +214,26 @@ To symmetrize a vector incartesian coordinates, see the routine `symmetrize_vect
 - `irt_q` : A vector (one for each symmetry) of the correspondances of q points. For each symmetry can be obtained from `get_irt_q!`
 - `gamma_index` : Specify which q vector is ``\Gamma``. If not specified, it is assumed to be the first one
 """
-function symmetrize_vector_q!(target_gamma :: AbstractVector{T}, original_q :: AbstractArray{Complex{T}, 2}, symmetries :: Symmetries, irt_q :: Vector{Vector{Int}}; gamma_index=1, buffer = default_buffer()) where {T}
+function symmetrize_vector_q!(target_gamma :: AbstractVector{T}, original_q :: AbstractArray{Complex{T}, 2}, sym :: Symmetries, irt_q :: Vector{Vector{Int}}; gamma_index=1, buffer = default_buffer()) where {T}
 
     n_modes = size(original_q, 1)
     n_q = size(original_q, 2)
 
-    @assert gamma_index <= n_q, "Error, the number of q points ($n_q) cannot be lower than the index of Γ ($gamma_index)"
+    @assert gamma_index <= n_q "Error, the number of q points ($n_q) cannot be lower than the index of Γ ($gamma_index)"
 
     @no_escape buffer begin
         tmp_vector = @alloc(Complex{T}, n_modes, n_q)
 
-        for i in 1:length(symmetries)
+        for i in 1:length(sym)
             sym_mat = sym.symmetries[i]
             irt = sym.irt[i]
             q_irt = irt_q[i]
 
-            apply_symmetry_vectorq!(tmp_vector, original_q, sym_mat, irt)
+            apply_symmetry_vectorq!(tmp_vector, original_q, sym_mat, irt, q_irt)
         end
 
-        tmp_vector ./= length(symmetries)
-        target_gamma .= real(tmp_vector[:, gamma_index])
+        tmp_vector ./= length(sym)
+        @views broadcast!(real, target_gamma, tmp_vector[:, gamma_index])
         nothing
     end
 end
@@ -261,23 +261,24 @@ function symmetrize_vector_cartesian_q!(vector_q_cart:: AbstractArray{Complex{T}
 
     @no_escape buffer begin
         vector_cryst = @alloc(T, n_modes)
-        target_vect = @alloc(T, n_modes)
-        target_vect .= 0
+        tmp_vect = @alloc(T, n_modes)
+        @views broadcast!(real, tmp_vect, vector_q_cart[:, 1])
 
         get_crystal_coords!(reshape(vector_cryst, n_dims, :),
-                            reshape(view(vector_q_cart[:, 1]), n_dims, :),
+                            reshape(tmp_vect, n_dims, :),
                             cell;
                             buffer=buffer)
         vector_q_cart[:, 1] .= vector_cryst
+        tmp_vect .= 0
 
-        symmetrize_vector_q!(target_vect, vector_q_cart, 
+        symmetrize_vector_q!(tmp_vect, vector_q_cart, 
                              symmetries.symmetries,
                              symmetries.irt_q;
                              buffer=buffer)
 
         # Convert back in cartesian space
         get_cartesian_coords!(reshape(vector_cryst, n_dims, :),
-                              reshape(target_vect, n_dims, :),
+                              reshape(tmp_vect, n_dims, :),
                               cell)
 
         vector_q_cart[:, 1] .= vector_cryst
@@ -379,7 +380,7 @@ function symmetrize_matrix_cartesian_q!(matrix_q :: AbstractArray{Complex{T}, 3}
     n_q = size(matrix_q, 3)
 
     @no_escape buffer begin
-        matrix_cryst_q = @alloc(T, size(matrix_q)...)
+        matrix_cryst_q = @alloc(Complex{T}, size(matrix_q)...)
         matrix_cryst_q .= 0
 
         # Convert in crystal coordinates
