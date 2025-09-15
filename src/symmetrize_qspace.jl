@@ -31,6 +31,8 @@ function SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatri
     SymmetriesQSpace(symmetries, irt_q, minus_q_index)
 end
 
+Base.isempty(x :: SymmetriesQSpace{T}) where T = isempty(sym.symmetries)
+
 
 @doc raw"""
     apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, original_vector :: AbstractMatrix{Complex{T}}, symmetry_operation :: AbstractMatrix{U}, irt :: Vector{Int}, q_points :: AbstractMatrix{T})
