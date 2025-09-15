@@ -31,7 +31,7 @@ function SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatri
     SymmetriesQSpace(symmetries, irt_q, minus_q_index)
 end
 
-Base.isempty(x :: SymmetriesQSpace) = isempty(sym.symmetries)
+Base.isempty(x :: SymmetriesQSpace) = isempty(x.symmetries)
 
 
 @doc raw"""
