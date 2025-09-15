@@ -103,7 +103,7 @@ function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{U}, matrix :: Abst
         metric_tensor = @alloc(T, dim, dim)
         inv_metric_tensor = @alloc(T, dim, dim)
         transform_matrix = @alloc(T, dim, dim)
-        tmp_matrix = @alloc(T, dim, dim)
+        tmp_matrix = @alloc(U, dim, dim)
 
         mul!(metric_tensor, cell', cell)
         inv_metric_tensor .= inv(metric_tensor) #TODO: Allocating
