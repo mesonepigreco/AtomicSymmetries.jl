@@ -38,7 +38,9 @@ export get_symmetry_group_from_spglib,
        SymmetriesQSpace, 
        apply_symmetry_vectorq!, apply_symmetry_matrixq!,
        apply_translations!,
-       symmetrize_vector_q!, symmetrize_matrix_q!
+       symmetrize_vector_q!, symmetrize_matrix_q!,
+       symmetrize_vector_cartesian_q!,
+       symmetrize_matrix_cartesian_q!
 
 
 

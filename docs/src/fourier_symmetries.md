@@ -1,6 +1,7 @@
 # Symmetries in Fourier space
 
-The symmetrization can be performed also in Fourier space.
+From version 0.8, `AtomicSymmetries.jl` provided the possibility to apply symmetries
+to vector and matrices directly in Fourier space.
 This is implemented now for force-constant dynamical matrices and vectors (displacements, forces, ...).
 
 A vector is transformed from real to q-space with the following convention:
@@ -100,11 +101,22 @@ This can be implemented by applying the complete irreducible representation of t
 
 where ``S_i`` is the symmetry operation. The two functions performing the symmetrization are `symmetrize_matrix_q!` and `symmetrize_vector_q!`. Also in this case, the dynamical matrix must be provided in crystalline coordinates.
 
+To symmetrize vector and matrices already provided in cartesian coordinates,
+we must use the appropriate subroutines `symmetrize_vector_cartesian_q!` and
+`symmetrize_matrix_cartesian_q!`. 
+These two subroutines correctly convert the vector/matrix in crystal coordinates 
+before applying the symmetries, and then convert the symmetrized result back in cartesian space.
+They are the most used subroutines to perform symmetrization in q-space,
+the equivalent of `symmetrize_vector!` and `symmetrize_fc!` for real space.
+
+
 Here the complete API
 
 ```@docs
 symmetrize_vector_q!
 symmetrize_matrix_q!
+symmetrize_vector_cartesian_q!
+symmetrize_matrix_cartesian_q!
 ```
 
 
