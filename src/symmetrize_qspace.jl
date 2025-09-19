@@ -8,7 +8,8 @@
     end
 
 This structure contains the information to perform the symmetrization of a dynamical matrix directly in q space.
-Note that the `q_points` needs to be in crystal coordinates.
+Note that the `q_points` needs to be in crystal coordinates,
+and the symmetries must be of the primitive cell.
 """
 struct SymmetriesQSpace{T} <: GenericSymmetries 
     symmetries :: Symmetries{T}
@@ -32,6 +33,52 @@ function SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatri
 end
 
 Base.isempty(x :: SymmetriesQSpace) = isempty(x.symmetries)
+Base.length(x :: SymmetriesQSpace) = length(x.symmetries)
+function Base.getindex(x :: SymmetriesQSpace, k) 
+    println("Getting $k")
+    return x.symmetries.symmetries[k]
+end
+
+
+@doc raw"""
+    check_symmetries(q_symmetries :: SymmetriesQSpace{T}, n_atoms :: Int) :: Bool
+
+Check if the q_symmetries has been correctly initialized in the primitive cell.
+
+Essentially, this subroutine checks the atomic correspondance by symmetry
+and spots if there are atoms outside the primitive cell (whose index is
+above `n_atoms`).
+
+## Parameters
+
+- `q_symmetries` : The symmetries in q space
+- `n_atoms` : The number of atoms in the primitive cell
+
+## Returns
+
+`true` if no contraddiction have been detected,
+`false` otherwise.
+"""
+function check_symmetries(q_symmetries :: SymmetriesQSpace{T}, n_atoms :: Int) :: Bool where T
+    println("Checking symmetries")
+    for i in 1:length(q_symmetries)
+        println("My $i")
+        n_length = length(q_symmetries.symmetries.irt[i])
+
+        if n_length > n_atoms
+            return false
+        end
+        for k in 1:n_length
+            println("k = $k")
+            if q_symmetries.symmetries.irt[i][k] > n_atoms
+                return false
+            end
+        end
+    end
+    println("Check symmetries Good!")
+    return true
+end
+
 
 
 @doc raw"""
@@ -54,6 +101,9 @@ function apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, or
     nq = length(irt_q)
     n_dims = size(symmetry_operation, 1)
     n_atoms = size(target_vector, 1) ÷ n_dims
+
+    println("Size target: $(size(target_vector))")
+    println("Size source: $(size(original_vector))")
 
     for iq in 1:nq
         jq = irt_q[iq]
@@ -258,6 +308,12 @@ function symmetrize_vector_cartesian_q!(vector_q_cart:: AbstractArray{Complex{T}
     n_modes = size(vector_q_cart, 1)
     n_q = size(vector_q_cart, 2)
     n_dims = size(cell, 1)
+    n_atoms = n_modes ÷ n_dims
+
+    # Check if it is coherent
+    if !check_symmetries(symmetries, n_atoms)
+        error("Error, the symmetries in q space must be initialized on the primitive cell!")
+    end
 
     @no_escape buffer begin
         vector_cryst = @alloc(T, n_modes)
@@ -270,6 +326,8 @@ function symmetrize_vector_cartesian_q!(vector_q_cart:: AbstractArray{Complex{T}
                             buffer=buffer)
         vector_q_cart[:, 1] .= vector_cryst
         tmp_vect .= 0
+
+        println("Size in: $(size(tmp_vect)), $(size(vector_q_cart))")
 
         symmetrize_vector_q!(tmp_vect, vector_q_cart, 
                              symmetries.symmetries,
