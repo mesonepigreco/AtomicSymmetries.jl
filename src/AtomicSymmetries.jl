@@ -37,7 +37,7 @@ export get_symmetry_group_from_spglib,
        matrix_r2q!, matrix_q2r!,
        SymmetriesQSpace, 
        apply_symmetry_vectorq!, apply_symmetry_matrixq!,
-       get_translations
+       get_translations,
        apply_translations!,
        symmetrize_vector_q!, symmetrize_matrix_q!,
        symmetrize_vector_cartesian_q!,
