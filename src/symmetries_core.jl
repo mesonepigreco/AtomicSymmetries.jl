@@ -845,21 +845,29 @@ get_translations(x :: GenericSymmetries) = get_translations(x.symmetries)
 
 @doc raw"""
     apply_translations!(matrix :: Matrix{T}, translations :: Vector{Vector{Int}};
+    apply_translations!(matrix :: Vector{T}, translations :: Vector{Vector{Int}};
 
-Enforce the translational symmetries on a supercell matrix.
+
+Enforce the translational symmetries on a supercell matrix or vector.
 The translational symmetries are encoded by the translations vector.
 Each element of the translations vectors contains the maps of the atomic
 indices mapped one into the other by the specific translation.
 
 ```math
-M_{ab}' = \frac{1}{N_t}\sum_{t} M_{t(a)t(b)}
+M_{ab} = \frac{1}{N_t}\sum_{t} M_{t(a)t(b)}
 ```
 
 where ``t(a)`` is the atom in which the translation ``t`` maps the ``a`` atom.
+
+In the case of a vector, instead, we have
+
+```math
+v_a = \frac{1}{N_t}\sum_t v_{t(a)}
+```
  
 ## Parameters
 
-- `matrix` : the in-place modified matrix
+- `matrix` or `vector` : the in-place modified tensor to be symmetrized
 - `translations` : the array of the translations
 - `buffer` : The stack buffer for caching (Bumper.jl) [optional]
 """
@@ -896,6 +904,33 @@ function apply_translations!(matrix :: Matrix{T}, translations :: Vector{Vector{
 
         tmpmat ./= T(length(translations))
         matrix .= tmpmat
+        nothing
+    end
+end
+function apply_translations!(vector :: AbstractVector{T}, translations :: Vector{Vector{Int}}; buffer=default_buffer()) where T
+    nat = length(translations[1])
+    n_modes = length(vector)
+    n_dims = n_modes ÷ nat
+    n_sc = length(translations)
+
+    @no_escape buffer begin
+        tmpvec = @alloc(T, n_modes_sc)
+        tmpvec .= 0.0 
+
+        for trans in translations
+            for i in 1:nat
+                start_i = n_dims * (i - 1) + 1
+                end_i = n_dims * i
+
+                start_t_i = n_dims * (trans[i] - 1) + 1
+                end_t_i = n_dims * trans[i]
+
+                @views tmpvec[start_i : end_i] .+= vector[start_t_i : end_t_i]
+            end
+        end
+
+        vector .= tmpvec
+        vector ./= n_sc
         nothing
     end
 end
