@@ -76,10 +76,21 @@ symmetrize_positions!(cartesian_coords, cell, symmetry_group)
 This function takes the atomic positions in cartesian coordinates, the cell matrix and the symmetry group.
 The cell must be column-wise, i.e., each column is a primitive vector of the cell.
 
-Here the API
+It is also possible just to apply the translational symmetries to either a vector or a force constants matrix.
+This is achieved calling the subroutine
+
+```julia
+apply_translations!(vector, translations)
+apply_translations!(matrix, translations)
+```
+where the `translations` is a vector of vector of Ints, each element represent a translations which maps each respective atomic index in the corresponding one. The `translations` object can be obtained from a symmetry group using the subroutine `get_translations`.
+
+Here the APIs for these calls
 
 ```@docs
 symmetrize_positions!
+get_translations
+apply_translations!
 ```
 
 ## The symmetry generators
