@@ -914,7 +914,7 @@ function apply_translations!(vector :: AbstractVector{T}, translations :: Vector
     n_sc = length(translations)
 
     @no_escape buffer begin
-        tmpvec = @alloc(T, n_modes_sc)
+        tmpvec = @alloc(T, n_modes)
         tmpvec .= 0.0 
 
         for trans in translations
