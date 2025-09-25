@@ -69,12 +69,13 @@ Due to time-inversion symmetry, the dynamical matrix must also satisfy the condi
 D(q) = D^\dagger(-q + G)
 ``
 
-therefore it is necessary also to keep track, for each q point, which one is the corresponding ``-q + G`` in the mesh. This mapping is computed by the helper function `get_minus_q!`. All these information needs to be stored when applying symmetries. Therefore we defined a new Symmetries struct that ihnerits from the `GenericSymmetries` called `SymmetriesQSpace`
+therefore it is necessary also to keep track, for each q point, which one is the corresponding ``-q + G`` in the mesh. This mapping is computed by the helper function `get_minus_q!`. All these information needs to be stored when applying symmetries. Therefore we defined a new Symmetries struct that ihnerits from the `GenericSymmetries` called `SymmetriesQSpace`. Note that, to initialize the symmetries in q-space, we **must** use the symmetries object (`Symmetries`) evaluated in the primitive cell. The correct initialization of symmetries could be checked with the subroutine `check_symmetries`, which will spot if a different cell has been employed when initializing the symmetries.
 
 ```@docs
 SymmetriesQSpace
 AtomicSymmetries.get_irt_q!
 AtomicSymmetries.get_minus_q!
+AtomicSymmetries.check_symmetries
 ```
 
 ### Application of symmetries
