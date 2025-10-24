@@ -3,6 +3,8 @@
 A package to enforce symmetry constraints on atomic positions in a crystal structure.
 It also works on dynamical matrices and force constants.
 
+The official documentation is available in github pages [here](https://mesonepigreco.github.io/AtomicSymmetries.jl/dev/).
+
 The package also exploits a memory efficient representation of the symmetry independent components of a tensor.
 It can be used in pairs with Spglib.jl and the python version of spglib via PyCall for symmetry recognition.
 
