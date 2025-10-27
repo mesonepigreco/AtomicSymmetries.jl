@@ -463,5 +463,19 @@ function symmetrize_matrix_cartesian_q!(matrix_q :: AbstractArray{Complex{T}, 3}
 end
 
 
+@doc raw"""
+    get_R_lat!(R_lat :: Matrix{T}, primitive_coords :: Matrix{T}, supercell_coords :: Matrix{T})
 
+Get the `R_lat` parameter to perform the fourier transform.
+
+## Parameters
+
+- `R_lat` the result lattice vectors, modified inplace
+- `primitive_coords` : The coordinates in the primitive cell
+- `supercell_coords` : The coordinates in the supercell
+
+"""
+function get_R_lat!(R_lat, primitive_coords, supercell_coords)
+
+end
 
