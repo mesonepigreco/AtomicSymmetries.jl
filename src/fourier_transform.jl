@@ -233,7 +233,7 @@ function matrix_r2q!(
 
                     h_i_uc = itau[h_i]
 
-                    exp_factor = exp(phase_i * q_dot_R)
+                    exp_factor = exp(-phase_i * q_dot_R)
                     @views tmp_mat .= matrix_r[(ndims*(h_i - 1) + 1 : ndims * h_i), (ndims*(k_i - 1) +1 : ndims*k_i)]
                     tmp_mat .*= exp_factor 
 
@@ -327,7 +327,7 @@ function matrix_q2r!(
 
                     h_i_uc = itau[h_i]
 
-                    exp_factor = exp(phase_i * q_dot_R)
+                    exp_factor = exp(-phase_i * q_dot_R)
                     #TODO: createa temporaney structure before adding the exponential otherwise itis not real
                     @views tmp_matrix .= matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1)+1 : ndims*k_i), iq]
                     tmp_matrix .*= exp_factor / nq
