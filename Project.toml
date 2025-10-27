@@ -1,7 +1,7 @@
 name = "AtomicSymmetries"
 uuid = "7e24f7a5-8a44-4f91-9a93-7ee03df51e54"
 authors = ["Lorenzo Monacelli <mesonepigreco@gmail.com>"]
-version = "0.8.4"
+version = "0.8.5"
 
 [deps]
 Bumper = "8ce10254-0962-460f-a3d8-1f77fea1446e"

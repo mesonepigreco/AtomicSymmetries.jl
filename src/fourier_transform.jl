@@ -186,7 +186,7 @@ end
 Fourier transform a matrix from real to q space
 
 ```math
-M_{ab}(\vec q) = \sum_{\vec R} e^{-2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
+M_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
 ```
 
 Where ``\Phi_{ab}`` is the real space matrix, the ``b+\vec R`` indicates the corresponding atom in the supercell displaced by ``\vec R``. 
@@ -233,7 +233,7 @@ function matrix_r2q!(
 
                     h_i_uc = itau[h_i]
 
-                    exp_factor = exp(-phase_i * q_dot_R)
+                    exp_factor = exp(phase_i * q_dot_R)
                     @views tmp_mat .= matrix_r[(ndims*(h_i - 1) + 1 : ndims * h_i), (ndims*(k_i - 1) +1 : ndims*k_i)]
                     tmp_mat .*= exp_factor 
 
@@ -327,7 +327,7 @@ function matrix_q2r!(
 
                     h_i_uc = itau[h_i]
 
-                    exp_factor = exp(-phase_i * q_dot_R)
+                    exp_factor = exp(phase_i * q_dot_R)
                     #TODO: createa temporaney structure before adding the exponential otherwise itis not real
                     @views tmp_matrix .= matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1)+1 : ndims*k_i), iq]
                     tmp_matrix .*= exp_factor / nq
