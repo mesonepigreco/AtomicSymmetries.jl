@@ -1,5 +1,5 @@
 @doc raw"""
-ASRconstraint!
+ASRConstraint!
 
 Apply the ASR constraint to a rank-`rank` tensor of dimension `dimension`.
 The application works as 

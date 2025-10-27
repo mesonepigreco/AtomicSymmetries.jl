@@ -209,8 +209,8 @@ function matrix_r2q!(
         matrix_q :: AbstractArray{Complex{T}, 3},
         matrix_r :: AbstractMatrix{T},
         q :: Matrix{T},
-        itau :: Vector{Int},
-        R_lat :: Matrix{T}; buffer = default_buffer()) where T
+        itau :: Vector{I},
+        R_lat :: Matrix{T}; buffer = default_buffer()) where {T, I<: Integer}
     nq = size(q, 2)
     ndims = size(q, 1)
     nat_sc = size(matrix_r, 1) ÷ ndims
@@ -286,8 +286,8 @@ function matrix_q2r!(
         matrix_r :: AbstractMatrix{T},
         matrix_q :: Array{Complex{T}, 3},
         q :: Matrix{T},
-        itau :: Vector{Int},
-        R_lat :: Matrix{T}; translations :: Union{Nothing, AbstractVector} = nothing, buffer = default_buffer()) where T
+        itau :: Vector{I},
+        R_lat :: Matrix{T}; translations :: Union{Nothing, AbstractVector} = nothing, buffer = default_buffer()) where {T, I <: Integer}
     nq = size(q, 2)
     ndims = size(q, 1)
     nat_sc = size(matrix_r, 1) ÷ ndims
