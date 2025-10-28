@@ -13,3 +13,10 @@ The standard acoustic sum rule is imposed by defining a structure `ASRConstraint
 ```@docs
 ASRConstraint!
 ```
+
+It is possible to automatically identify translational modes with `translation_mask!` subroutine, which returns false to modes that are purely translational.
+This is very important to selectively optimize only a subset of modes.
+
+```@docs
+translation_mask!
+```
