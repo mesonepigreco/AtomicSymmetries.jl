@@ -473,9 +473,16 @@ Get the `R_lat` parameter to perform the fourier transform.
 - `R_lat` the result lattice vectors, modified inplace
 - `primitive_coords` : The coordinates in the primitive cell
 - `supercell_coords` : The coordinates in the supercell
+- `itau` : The correspondence for each atom in the supercell with the respective atom in the primitive cell
 
 """
-function get_R_lat!(R_lat, primitive_coords, supercell_coords)
+function get_R_lat!(R_lat :: Matrix{T}, primitive_coords :: Matrix{T}, supercell_coords :: Matrix{T}, itau :: Vector{I}) where {T, I <: Integer}
+    nat_uc = size(primitive_coords, 2)
+    nat_sc = size(supercell_coords, 2)
 
+    @simd for i in 1:nat_sc
+        @views R_lat[:, i] .= supercell_coords[:, i]
+        @views R_lat[:, i] .-= primitive_coords[:, itau[i]]
+    end
 end
 

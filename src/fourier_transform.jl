@@ -186,7 +186,7 @@ end
 Fourier transform a matrix from real to q space
 
 ```math
-M_{ab}(\vec q) = \sum_{\vec R} e^{-2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
+M_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
 ```
 
 Where ``\Phi_{ab}`` is the real space matrix, the ``b+\vec R`` indicates the corresponding atom in the supercell displaced by ``\vec R``. 

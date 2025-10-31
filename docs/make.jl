@@ -5,6 +5,7 @@ using Documenter
 
 makedocs(sitename="AtomicSymmetries.jl Documentation", format=[Documenter.HTML()],
          pages = ["Home" => "index.md", 
+                  "Acoustic Sum Rule" => "acoustic_sum_rule.md",
                   "Symmetries in Q space" => "fourier_symmetries.md"],
          repo = "https://github.com/mesonepigreco/AtomicSymmetries.jl/blob/{commit}{path}#{line}"
         )
