@@ -16,7 +16,13 @@ A vector is transformed from real to q-space with the following convention:
 v_k(\vec R) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{i 2\pi \vec R\cdot \vec q} \tilde v_k(\vec q)
 ``
 
-Note the sign of the Fourier and the normalization prefactor. With this convention, we recover the standard rule for the matrices.
+
+Note the sign of the Fourier and the normalization prefactor. 
+This convention allows for correctly transforming the matrices, however, it introduces a size inconsistency on the vectors.
+If we have a periodic vector in the cell, its ``q`` fourier transformed counterpart will be ``\sqrt {N_q}`` times
+the value in the primitive cell. So be carefull when extracting ``\Gamma`` point data from periodic vectors.
+
+With this convention, we recover the standard rule for the matrices.
 
 ``
 \displaystyle
@@ -121,3 +127,22 @@ symmetrize_matrix_cartesian_q!
 ```
 
 
+## Manipulating q points
+
+The fourier transform depends on the knowledge of few vectors:
+`q_points`, `itau`, and `R_lat` (evenutally `translations`, for inverse 
+fourier transform into a matrix).
+
+All these properties can be evaluated from the core source.
+For example, to obtain the supercell to which the q points are commensurate, 
+we can use the `get_supercell` method as
+
+```@docs
+get_supercell!
+```
+
+Analogously, we can get the translations `R_lat` as
+
+```@docs
+get_R_lat!
+```

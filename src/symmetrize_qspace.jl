@@ -476,7 +476,7 @@ Get the `R_lat` parameter to perform the fourier transform.
 - `itau` : The correspondence for each atom in the supercell with the respective atom in the primitive cell
 
 """
-function get_R_lat!(R_lat :: Matrix{T}, primitive_coords :: Matrix{T}, supercell_coords :: Matrix{T}, itau :: Vector{I}) where {T, I <: Integer}
+function get_R_lat!(R_lat :: AbstractMatrix{T}, primitive_coords :: AbstractMatrix{T}, supercell_coords :: AbstractMatrix{T}, itau :: Vector{I}) where {T, I <: Integer}
     nat_uc = size(primitive_coords, 2)
     nat_sc = size(supercell_coords, 2)
 
@@ -486,3 +486,63 @@ function get_R_lat!(R_lat :: Matrix{T}, primitive_coords :: Matrix{T}, supercell
     end
 end
 
+
+
+@doc raw"""
+    get_supercell(q_points::AbstractMatrix{T}) :: Vector{Int}
+    get_supercell!(supercell::AbstractVector{I}, q_points::AbstractMatrix{T}) where {T, I<:Integer}
+
+Calculates the minimum supercell dimensions required to fold a set of commensurate
+wave vectors (`q_points`) back to the Gamma point (Γ) of the Brillouin zone.
+
+The resulting supercell dimension \$S_i\$ for each spatial direction is determined
+by the reciprocal of the smallest non-zero q-point component in that direction.
+For commensurate grids, this is mathematically equivalent to:
+
+```math
+S_i = \text{round} \left( \frac{1}{\min(|q_{i}|)} \right)
+```
+
+This function is primarily used when performing calculations in a real-space supercell
+that is commensurate with the input k-point (or q-point) grid.
+
+## Arguments
+
+- `q_points`: A 2D matrix where **each column** represents a q-point vector, and
+  **each row** corresponds to a dimension (x, y, z).
+- `supercell`: An pre-allocated integer vector to store the result (used by the
+  `get_supercell!` in-place version).
+
+## Important Note on Coordinates
+
+The `q_points` **must** be provided in **crystal coordinates** (fractional coordinates)
+with respect to the Brillouin zone reciprocal lattice vectors.
+
+# Example
+
+```julia
+# 3 dimensions, 2 q-points
+q_points = [0.5 0.0;
+            0.0 0.5;
+            0.0 0.25]
+
+# The supercell dimensions required are based on (1/0.5, 1/0.5, 1/0.25).
+supercell = get_supercell(q_points)
+# Result: [2, 2, 4]
+```
+"""
+function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatrix{T}) where {T, I<:Integer}
+    function cellvalue(x) :: I
+        if abs(x) < 1e-10
+            return 1
+        end
+        round(1 / abs(x))
+    end
+    maximum!(cellvalue, supercell, q_points)
+end
+function get_supercell(q_points :: AbstractMatrix{T}) :: Vector{Int} where T
+    ndims = size(q_points, 1)
+    supercell = zeros(Int, ndims)
+    get_supercell!(supercell, q_points)
+    supercell
+end
