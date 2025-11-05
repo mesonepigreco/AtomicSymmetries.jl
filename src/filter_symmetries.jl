@@ -17,11 +17,11 @@ a perturbation with vector given by `vector` is violating.
 - `cell` : The primitive cell of the structure. Required to correctly apply symmetries in cartesian space.
 - `buffer` : Optional, Bumper.jl buffer for stack allocation.
 """
-function symmetry_violation_mask!(mask :: Vector{Bool}, 
+function symmetry_violation_mask!(mask :: AbstractVector{Bool}, 
                       symmetry_group :: Symmetries,
-                      vector :: AbstractVector,
-                      cell :: AbstractMatrix;
-                      buffer=default_buffer())
+                      vector :: AbstractVector{T},
+                      cell :: AbstractMatrix{T};
+                      buffer=default_buffer()) where T
     n_dims = get_dimensions(symmetry_group)
     nat = length(vector) ÷ n_dims
 
@@ -30,12 +30,19 @@ function symmetry_violation_mask!(mask :: Vector{Bool},
 
     mask .= false
 
+    println("Inside mask")
+
     @no_escape buffer begin
         irt = @alloc(Int, nat)
         tmp_vector = @alloc(T, size(vector)...)
         crystal_coordinates = @alloc(T, length(vector))
         irt .= 0
         irt[1] = 1
+
+        @show size(crystal_coordinates)
+        @show n_dims
+        @show vector
+        @show cell
 
         # Convert to crystalline coordinates
         get_crystal_coords!(reshape(crystal_coordinates, n_dims, :), 
@@ -113,12 +120,14 @@ This works for symmetry groups expressed in q space
 function filter_invariant_symmetries!(q_symmetry_group :: SymmetriesQSpace, vector :: AbstractVector{T}, cell :: AbstractMatrix; buffer=default_buffer()) where T
 
     @no_escape buffer begin
-        mask = @alloc(Bool, length(symmetry_group))
+        mask = @alloc(Bool, length(q_symmetry_group))
 
-        symmetry_mask_violation!(mask, q_symmetry_group.symmetries, vector, cell; buffer=buffer)
+        symmetry_violation_mask!(mask, q_symmetry_group.symmetries, vector, cell; buffer=buffer)
         # Delete from reverse to avoid bugs
+        @show mask
         for i in length(mask):-1:1
             if mask[i]
+                println("Deleating $i")
                 deleteat!(q_symmetry_group.symmetries.symmetries, i)
                 deleteat!(q_symmetry_group.symmetries.irt, i)
                 deleteat!(q_symmetry_group.irt_q, i)

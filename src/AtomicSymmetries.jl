@@ -45,7 +45,8 @@ export get_symmetry_group_from_spglib,
        symmetrize_vector_q!, symmetrize_matrix_q!,
        symmetrize_vector_cartesian_q!,
        symmetrize_matrix_cartesian_q!,
-       get_R_lat!, get_supercell, get_supercell!
+       get_R_lat!, get_supercell, get_supercell!,
+       shift_position_origin!
 
 
 

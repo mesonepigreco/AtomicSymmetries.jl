@@ -6,15 +6,13 @@ This is implemented now for force-constant dynamical matrices and vectors (displ
 
 A vector is transformed from real to q-space with the following convention:
 
-``
-\displaystyle
+```math
 \tilde v_k(\vec q) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{-i 2\pi \vec R\cdot \vec q} v_k(\vec R)
-``
+```
 
-``
-\displaystyle
+```math
 v_k(\vec R) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{i 2\pi \vec R\cdot \vec q} \tilde v_k(\vec q)
-``
+```
 
 
 Note the sign of the Fourier and the normalization prefactor. 
@@ -24,33 +22,41 @@ the value in the primitive cell. So be carefull when extracting ``\Gamma`` point
 
 With this convention, we recover the standard rule for the matrices.
 
-``
-\displaystyle
+```math
 \tilde \Phi_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
-``
+```
 
-``
-\displaystyle
+```math
 \Phi_{ab} = \frac{1}{N_q} \sum_{\vec q}
 \tilde\Phi_{ab}(\vec  q) e^{2i\pi \vec q\cdot[\vec R(a) - \vec R(b)]}
-``
+```
 
 Note that these transformation of matrices and vector are consistent so that matrices and vector written as outer product can be consistently transformed
 
-``
-\displaystyle
+```math
 \Phi(\vec R) = \sum_i\sum_{\vec R} \vec v_i(\vec R_1) \otimes \vec v_i(\vec R_1 + \vec R)
-``
+```
 
-``
-\displaystyle
+```math
 \tilde \Phi(\vec q) = \sum_i \vec {\tilde v}_i(\vec q) \otimes \vec {\tilde v_i}(-\vec q)
-``
+```
+
+Notably, this convention introduces two main properties that must be handled with care.
+The ``\Gamma`` value of the fourier transform is not the average over the supercell of the same
+quantity. If you want to obtain the average, you must divide by ``\sqrt {N_q}`` (the number of q-points).
+If the `R_lat` is not centered around zero, and the coordinates passed as `v_sc` are absolute values of positions,
+then the ``\Gamma`` value of the fourier transform will be shifted by a total translation which is the average of the translations of the supercell lattice
+vectors.
+This can be avoided by either removing the corner of the supercell from the positions before performing the fourier transform, by centering R_lat around 0,
+or by removing this translational average *a posteriori* using the method `shift_position_origin!`.
+
 
 
 ## Fourier transform
 
 The API to perform the fourier transform occur mainly with `vector_r2q!`, `vector_q2r!` which, respectively, trasform a vector from real to q space and vice-versa. Transformation of matrices occur with `matrix_r2q!`, `matrix_q2r!`. All these operations are inplace. The matrices are assumed in crystal coordinates, but in this case it should not matter.
+
+To shift the origin for the fourier transformed absolute positions, use the method `shift_position_origin!` as
 
 The detailed API calls are
 
@@ -59,6 +65,7 @@ vector_r2q!
 vector_q2r!
 matrix_r2q!
 matrix_q2r!
+shift_position_origin!
 ```
 
 

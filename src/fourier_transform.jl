@@ -27,6 +27,17 @@ but implemented in this way for performance reasons as
 it is the most convenient memory rapresentation for vectorizing the
 average calculation.
 
+Notably, this convention introduces two main properties:
+
+The ``\Gamma`` value of the fourier transform is not the average over the supercell of the same
+quantity. If you want to obtain the average, you must divide by √nq (the number of q-points).
+
+If the `R_lat` is not centered around zero, and the coordinates passed as `v_sc` are absolute values of positions,
+then the ``\Gamma`` value of the fourier transform will be shifted by a total translation which is the average of the translations of the supercell lattice
+vectors.
+This can be avoided by either removing the corner of the supercell from the positions before performing the fourier transform, by centering R_lat around 0,
+or by removing this translational average *a posteriori* using the method `shift_position_origin!`.
+
 
 ## Parameters
 
@@ -75,7 +86,7 @@ function vector_r2q!(
         end
     end
 
-    v_q ./= √(nq)
+    v_q ./= nq
 end
 function vector_r2q!(
         v_q :: AbstractArray{Complex{T}, 2},
@@ -356,4 +367,117 @@ function matrix_q2r!(
         nothing
     end
 end
+
+
+@doc raw"""
+    shift_position_origin!(r_vector::AbstractVector{Complex{T}}, cell::AbstractMatrix{T}, R_lat::AbstractMatrix{T}; buffer) where T
+    shift_position_origin!(r_vectors::AbstractMatrix{Complex{T}}, cell::AbstractMatrix{T}, R_lat::AbstractMatrix{T}; buffer) where T
+
+Shifts a set of position vectors (`r_vector` or `r_vectors`) such that the average position (center of mass) of the reference lattice (`R_lat`) is moved to the origin. The function operates in-place.
+This can be employed after performing a Fourier Transform of absolute positions, to correct for non centered `R_lat`.
+
+This is typically used to remove the lattice translation from displacement vectors before calculating quantities that are invariant to rigid body translations.
+
+The average position vector of the reference lattice $\mathbf{r}_{\text{avg}}$ is calculated in Cartesian coordinates, and then subtracted from the input vectors $\mathbf{r}$.
+
+```math
+\mathbf{r}_{\text{avg}} = \frac{1}{N_{\text{atoms}}} \sum_{k=1}^{N_{\text{atoms}}} \mathbf{r}_{\text{lat}, k}
+```
+
+The position vectors are then shifted:
+```math
+\mathbf{r}' = \mathbf{r} - \mathbf{r}_{\text{avg}}
+```
+
+## Arguments
+
+- `r_vector`/`r_vectors` : The position vector(s) (of type `Complex{T}`) to be shifted in-place. 
+- `cell` : The $N_{dims} \times N_{dims}$ matrix defining the unit cell (lattice vectors). 
+- `R_lat` : The reference lattice positions (fractional/lattice coordinates, ``N_{dims} \times N_{atoms}``) whose average position determines the shift. 
+- `buffer` : An optional buffer for temporary memory allocation (Bumer.jl)
+
+## Details on `r_vectors` Matrix Method
+
+The matrix method assumes that the input `r_vectors` has the dimensions ``(N_{\text{configs}}, N_{\text{dims}} \times N_{\text{atoms,v}})``, where ``N_{\text{configs}}`` is the number of configurations, and ``N_{\text{atoms,v}}`` is the number of atoms in the vectors being shifted.
+
+The shift is applied simultaneously to all configurations using broadcasting (`@views ... .-=`).
+
+
+## Example
+
+An example of usage after the fourier transform
+
+```julia
+# Define positions_r as a n_configs, 3n_atoms_sc vector
+# Perform the fourier transform in q space
+# Here, we assume that R_lat and q_points are expressed in crystal coordinates.
+# Otherwise, just pass the identity to the cell below.
+vector_r2q!(positions_q, positions_r, q_points, itau, R_lat)
+
+# Remove the translations
+shift_position_origin!(positions_q, cell, R_lat)
+```
+"""
+function shift_position_origin!(r_vector :: AbstractVector{Complex{T}}, cell :: AbstractMatrix{T}, R_lat :: AbstractMatrix{T}; buffer = default_buffer())
+
+    n_dims = size(R_lat, 1)
+    n_atoms = size(R_lat, 2)
+    n_atoms_v = length(r_vector) ÷ n_dims
+
+    @no_escape buffer begin
+        r_lat_cart = @alloc(T, size(R_lat)...)
+        r_lat_avg = @alloc(T, n_dims)
+
+        get_cartesian_coords!(r_lat_cart, R_lat, cell)
+
+        # Average the displacement
+        r_lat_avg .= zero(T)
+        for i in 1:n_dims
+            @simd for k in 1:n_atoms
+                r_lat_avg[i] += r_lat_cart[i, k]
+            end
+        end
+        r_lat_avg ./= n_atoms
+
+        for k in 1:n_atoms_v
+            @simd for i in 1:n_dims
+                r_vector[n_dims * (k-1) + i] -= r_lat_avg[i]
+            end
+        end
+    end
+    r_vector
+end
+function shift_position_origin!(r_vectors :: AbstractMatrix{Complex{T}}, cell :: AbstractMatrix{T}, R_lat :: AbstractMatrix{T}; buffer = default_buffer())
+
+    n_dims = size(R_lat, 1)
+    n_atoms = size(R_lat, 2)
+    n_configs = size(r_vectors, 1)
+    n_atoms_v = size(r_vectors) ÷ n_dims
+
+    @no_escape buffer begin
+        r_lat_cart = @alloc(T, size(R_lat)...)
+        r_lat_avg = @alloc(T, n_dims)
+
+        get_cartesian_coords!(r_lat_cart, R_lat, cell)
+
+        # Average the displacement
+        r_lat_avg .= zero(T)
+        for i in 1:n_dims
+            @simd for k in 1:n_atoms
+                r_lat_avg[i] += r_lat_cart[i, k]
+            end
+        end
+        r_lat_avg ./= n_atoms
+
+        for k in 1:n_atoms_v
+            @simd for i in 1:n_dims
+                r_remove = r_lat_avg[i]
+                index =  n_dims * (k-1) + i
+                @views r_vectors[:, index] .-= r_remove
+            end
+        end
+    end
+    r_vectors
+end
+
 
