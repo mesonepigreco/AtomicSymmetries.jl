@@ -35,8 +35,12 @@ quantity. If you want to obtain the average, you must divide by √nq (the numbe
 If the `R_lat` is not centered around zero, and the coordinates passed as `v_sc` are absolute values of positions,
 then the ``\Gamma`` value of the fourier transform will be shifted by a total translation which is the average of the translations of the supercell lattice
 vectors.
-This can be avoided by either removing the corner of the supercell from the positions before performing the fourier transform, by centering R_lat around 0,
-or by removing this translational average *a posteriori* using the method `shift_position_origin!`.
+
+To avoid this behaviour (which is wrong), you can use the option `absolute_positions`,
+which automatically rescales the `v_sc` to be coordinates relative
+to the respective cell origin identified by `R_lat`.
+Indeed, in this case, `R_lat` and `v_sc` must be of the same 
+units, and coordinate types (you cannot mix crystalline and cartesian).
 
 
 ## Parameters
@@ -51,13 +55,16 @@ or by removing this translational average *a posteriori* using the method `shift
     The correspondance for each atom in the supercell with the atom in the primitive cell.
 - `R_lat` : (3, nat_sc)
     The origin coordinates of the supercell in which the atom is
+- `absolute_positions` : Bool
+    If true [default false], removes from v_sc the value of R_lat.
 """
 function vector_r2q!(
         v_q :: AbstractArray{Complex{T}, 3},
         v_sc :: AbstractMatrix{T},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T}
+        R_lat :: AbstractMatrix{T};
+        absolute_positions :: Bool = false
     ) where {T <: AbstractFloat, I <: Integer}
 
     nq = size(q, 2)
@@ -67,8 +74,8 @@ function vector_r2q!(
 
     v_q .= 0
 
-    println("R_lat ", size(R_lat))
-    println("q_vec ", size(q))
+    println("R_lat = ", size(R_lat))
+    println("q_vec = ", size(q))
 
 
     for jq ∈ 1:nq
@@ -80,7 +87,13 @@ function vector_r2q!(
                 index_sc = 3 * (k - 1) + α
                 index_uc = 3 * (itau[k] - 1) + α
                 @simd for i ∈ 1:n_random
-                    v_q[i, index_uc, jq] += exp_value * v_sc[i, index_sc]
+                    # Remove the absolute position if needed
+                    δ_value = v_sc[i, index_sc]
+                    if absolute_positions
+                        δ_value -= R_lat[α, k]
+                    end
+
+                    v_q[i, index_uc, jq] += exp_value * δ_value
                 end
             end
         end
@@ -93,10 +106,11 @@ function vector_r2q!(
         v_sc :: AbstractVector{T},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T}
+        R_lat :: AbstractMatrix{T};
+        kwargs...
     ) where {T <: AbstractFloat, I <: Integer}
 
-    vector_r2q!(reshape(v_q, 1, size(v_q)...), reshape(v_sc, 1, size(v_sc)...), q, itau, R_lat)
+    vector_r2q!(reshape(v_q, 1, size(v_q)...), reshape(v_sc, 1, size(v_sc)...), q, itau, R_lat; kwargs...)
 end
 
 
@@ -106,13 +120,16 @@ end
         v_q :: AbstractArray{Complex{T}, 3},
         q_tot :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T}) where {T <: AbstractFloat, I <: Integer}
+        R_lat :: Matrix{T};
+        absolute_positions :: Bool = false
+        ) where {T <: AbstractFloat, I <: Integer}
     function vector_q2r!(
         v_sc :: AbstractVector{T},
         v_q :: AbstractMatrix{Complex{T}},
         q :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T}
+        R_lat :: Matrix{T};
+        absolute_positions :: Bool = false
     ) where {T <: AbstractFloat, I <: Integer}
 
 
@@ -141,13 +158,16 @@ This choice is made for performance reason in computing averages (exploiting vec
     The correspondance for each atom in the supercell with the atom in the primitive cell.
 - `R_lat : (3, nat_sc)`
     The origin coordinates of the supercell in which the atom is
+- `absolute_positions` : Bool
+    If true, add the absolute position of the cell to the transformed v_sc
 """
 function vector_q2r!(
         v_sc :: AbstractMatrix{T},
         v_q :: AbstractArray{Complex{T}, 3},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T}
+        R_lat :: AbstractMatrix{T};
+        absolute_positions :: Bool = false
     ) where {T <: AbstractFloat, I <: Integer}
 
     nq = size(q, 2)
@@ -156,6 +176,16 @@ function vector_q2r!(
     tmp_vector = zeros(Complex{T}, (n_random, 3*nat_sc))
 
     v_sc .= 0
+    if absolute_positions
+        for h in 1:nat_sc
+            for k in 1:3
+                δvalue = R_lat[k, h]
+                index = 3*(h-1) + k
+                v_sc[:, index] .+= δvalue
+            end
+        end
+    end
+
     for jq ∈ 1:nq
         for k ∈ 1:nat_sc
             @views q_dot_R = q[:, jq]' * R_lat[:, k]
@@ -171,18 +201,20 @@ function vector_q2r!(
         end
     end
 
-    v_sc .= real(tmp_vector)
+    v_sc .+= real(tmp_vector)
     v_sc ./= √(nq)
 end
+
 function vector_q2r!(
         v_sc :: AbstractVector{T},
         v_q :: AbstractArray{Complex{T}, 2},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T}
+        R_lat :: AbstractMatrix{T};
+        kwargs...
     ) where {T <: AbstractFloat, I <: Integer}
 
-    vector_q2r!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat)
+    vector_q2r!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat; kwargs)
 end
 
 
@@ -418,7 +450,7 @@ vector_r2q!(positions_q, positions_r, q_points, itau, R_lat)
 shift_position_origin!(positions_q, cell, R_lat)
 ```
 """
-function shift_position_origin!(r_vector :: AbstractVector{Complex{T}}, cell :: AbstractMatrix{T}, R_lat :: AbstractMatrix{T}; buffer = default_buffer())
+function shift_position_origin!(r_vector :: AbstractVector{U}, cell :: AbstractMatrix{T}, R_lat :: AbstractMatrix{T}; buffer = default_buffer()) where {T, U <: Union{T, Complex{T}}}
 
     n_dims = size(R_lat, 1)
     n_atoms = size(R_lat, 2)
@@ -447,7 +479,7 @@ function shift_position_origin!(r_vector :: AbstractVector{Complex{T}}, cell :: 
     end
     r_vector
 end
-function shift_position_origin!(r_vectors :: AbstractMatrix{Complex{T}}, cell :: AbstractMatrix{T}, R_lat :: AbstractMatrix{T}; buffer = default_buffer())
+function shift_position_origin!(r_vectors :: AbstractMatrix{U}, cell :: AbstractMatrix{T}, R_lat :: AbstractMatrix{T}; buffer = default_buffer()) where {T, U <: Union{T, Complex{T}}}
 
     n_dims = size(R_lat, 1)
     n_atoms = size(R_lat, 2)

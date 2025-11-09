@@ -3,6 +3,7 @@ module AtomicSymmetries
 using Spglib
 using LinearAlgebra
 using SparseArrays
+using StaticArrays
 using Bumper
 
 # Bumper.allow_ptr_array_to_escape() = true
@@ -46,6 +47,7 @@ export get_symmetry_group_from_spglib,
        symmetrize_vector_cartesian_q!,
        symmetrize_matrix_cartesian_q!,
        get_R_lat!, get_supercell, get_supercell!,
+       get_reciprocal_lattice!, cryst_cart_conv!,
        shift_position_origin!
 
 

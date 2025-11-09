@@ -489,7 +489,9 @@ end
 
 
 @doc raw"""
+    get_supercell(q_points::AbstractMatrix{T}, cell :: AbstractMatrix{T}) :: Vector{Int}
     get_supercell(q_points::AbstractMatrix{T}) :: Vector{Int}
+    get_supercell!(supercell::AbstractVector{I}, q_points::AbstractMatrix{T}, cell :: AbstractMatrix{T}) where {T, I<:Integer}
     get_supercell!(supercell::AbstractVector{I}, q_points::AbstractMatrix{T}) where {T, I<:Integer}
 
 Calculates the minimum supercell dimensions required to fold a set of commensurate
@@ -512,11 +514,13 @@ that is commensurate with the input k-point (or q-point) grid.
   **each row** corresponds to a dimension (x, y, z).
 - `supercell`: An pre-allocated integer vector to store the result (used by the
   `get_supercell!` in-place version).
+- `cell` : The primitive cell. If not provided, the code assumes that q_points are 
+    in fractional coordinates.
 
 ## Important Note on Coordinates
 
 The `q_points` **must** be provided in **crystal coordinates** (fractional coordinates)
-with respect to the Brillouin zone reciprocal lattice vectors.
+if `cell` is not provided. 
 
 # Example
 
@@ -540,9 +544,24 @@ function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatr
     end
     maximum!(cellvalue, supercell, q_points)
 end
-function get_supercell(q_points :: AbstractMatrix{T}) :: Vector{Int} where T
+function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatrix{T}, cell:: AbstractMatrix{T}; buffer=default_buffer()) where {T, I<:Integer}
+    # Convert the q points in crystal coordinates
+    @no_escape buffer begin
+        q_points_fract = @alloc(T, size(q_points)...)
+        mul!(q_points_fract, cell', q_points, 1 / (2π), 0.0)
+        println("q_fract = $q_points_fract")
+        println("q_points = $q_points")
+        println("cell = $cell")
+        get_supercell!(supercell, q_points_fract)
+        nothing
+    end
+end
+function get_supercell(q_points :: AbstractMatrix{T}, args...; kwargs...) :: Vector{Int} where T
     ndims = size(q_points, 1)
     supercell = zeros(Int, ndims)
-    get_supercell!(supercell, q_points)
+    get_supercell!(supercell, q_points, args...; kwargs...)
     supercell
 end
+
+
+

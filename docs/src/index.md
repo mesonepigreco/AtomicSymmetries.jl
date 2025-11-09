@@ -203,6 +203,16 @@ get_cartesian_coords!(cartesian_positions, crystal_positions, cell)
 ```
 This function does not require any memory allocation.
 
+Notably, a much faster, nonallocating implementation can be used if the reciprocal vectors are available,
+which can perform transformation of both real space and q space. Reciprocal vectors
+can be computed using the `get_reciprocal_lattice!` subroutine, while the crystal-cartesian conversion
+is obtained through `cryst_cart_conv!`.
+
+```@docs
+cryst_cart_conv!
+get_reciprocal_lattice!
+```
+
 
 ## Filter symmetries
 
