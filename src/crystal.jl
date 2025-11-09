@@ -229,11 +229,11 @@ function cryst_cart_conv!(target :: AbstractArray{T}, source :: AbstractArray{T}
         q_space :: Bool = false) where {T, U}
 
     if cryst_to_cart && q_space
-        mul!(target, reciprocal_vectors, source)
+        mul!(target, reciprocal_vectors, source, U(1/(2π)), zero(U))
     elseif !cryst_to_cart && !q_space
         mul!(target, reciprocal_vectors', source, U(1/(2π)), zero(U))
     elseif !cryst_to_cart && q_space
-        mul!(target, primitive_cell', source, U(1/(2π)), zero(U))
+        mul!(target, primitive_cell', source)
     else
         mul!(target, primitive_cell, source)
     end

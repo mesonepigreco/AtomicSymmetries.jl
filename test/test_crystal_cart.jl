@@ -22,8 +22,8 @@ function test_crystal_to_cart(; verbose=false)
     q_points_cartesian_test = zeros(Float64, size(q_points_fract)...)
     q_points_cryst_test = zeros(Float64, size(q_points_fract)...)
 
-    mul!(q_points_cartesian, reciprocal_lattice, q_points_fract)
-    mul!(q_points_cryst_test, cell', q_points_cartesian, 1/(2π), 0.0)
+    mul!(q_points_cartesian, reciprocal_lattice, q_points_fract, 1/(2π), 0.0)
+    mul!(q_points_cryst_test, cell', q_points_cartesian, 1.0, 0.0)
 
     # Check if the two conversion went well
     @test isapprox(q_points_cryst_test, q_points_fract; atol = 1e-8, rtol =1e-6)
