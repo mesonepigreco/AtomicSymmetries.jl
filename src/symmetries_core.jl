@@ -371,6 +371,7 @@ function apply_sym_centroid!(result :: AbstractVector{T}, centroid :: AbstractVe
     translation = nothing) where {T,U}
     # Use mul! to avoid allocating memory
     n_atoms = length(centroid) ÷ dimensions
+
     if translation == nothing
         for i ∈ 1:n_atoms 
             j = irt[i]
@@ -714,14 +715,35 @@ end
 @doc raw"""
     get_irt!(irt, coords, matrix, translation)
 
-Get the irt index.
+Finds the atom permutation induced by an affine symmetry operation (rotation + translation) in a crystal lattice.
 
-# Arguments
+The function applies the transformation to each atom `i` and finds which atom `j` in the original structure occupies that new position, accounting for periodic boundary conditions (lattice translations).
 
-- `irt::Array{Int}`: The irt index (inplace modified)
-- `coords::AbstractMatrix`: The atomic positions in the cell (crystallographic coordinates), with shape `(3, N)`.
-- `matrix::AbstractMatrix`: The rotation matrix.
-- `translation::AbstractVector`: The translation vector.
+The result `irt` is an array where irt[i] = j means: "The atom with original index i is transformed to the position originally occupied by the atom with original index j."
+
+Mathematically, it finds `j` for each `i` such that: `matrix * coords[:, i] + translation ≈ coords[:, j] + P` where P is an integer lattice vector. The function handles this periodicity by comparing distances in fractional coordinates.
+
+
+## Arguments
+
+- `irt::Vector{Int}`: Output array (in-place modified) where `irt[i] = j` means that atom `i` 
+  in the original structure is transformed to the position of atom `j` in the original structure.
+  In other words, the transformation maps atom `i` to atom `irt[i]`.
+- `coords::AbstractMatrix`: The atomic positions in fractional coordinates, with shape (3, N).
+- `matrix::AbstractMatrix`: The rotation matrix (3×3).
+- `translation::AbstractVector`: The translation vector in fractional coordinates.
+
+## How it works
+
+1. Applies the affine transformation to all atoms: `new_coords = matrix * coords`
+2. For each transformed atom `i`, finds the original atom `j` that is closest to 
+   `new_coords[:, i] + translation` (accounting for periodic boundaries)
+3. Sets `irt[i] = j` indicating that atom `i` maps to atom `j` under this symmetry operation
+
+## Example
+
+If `irt[3] = 5`, this means the symmetry operation transforms atom 3 to the position 
+that atom 5 occupies in the original structure.
 """
 function get_irt!(irt, coords, matrix, translation)
     new_coords = matrix * coords
@@ -840,6 +862,59 @@ function get_translations(symmetries :: Symmetries) :: Vector{Vector{Int}}
     return [symmetries.irt[i] for i in good_translations]
 end
 get_translations(x :: GenericSymmetries) = get_translations(x.symmetries)
+
+
+@doc raw"""
+    get_translations(coords :: AbstractMatrix{T}, supercell, R_lat :: Vector{I}) :: Vector{Vector{I}} where {T, I<: Integer} 
+
+Return a vector containin, for each element, 
+the corrispondence of couple of atoms mapped by the
+respective translational symmetry.
+
+For the mapping, see `get_irt!` documentation.
+
+## Parameters
+
+- `coords` : the atomic coordinates in crystalline axes (in the supercell)
+- `supercell` : The dimension of the supercel (e.g. a 3x3x3 supercell should be a tuple (3,3,3) )
+- `R_lat` : The translations operated, i.e. the vectors of each translations (of the primitive cell). Note that this are integers.
+
+## Results
+
+- `translations` : A vector containing the mapping between atoms operated by the respective translations in `R_lat`.
+"""
+function get_translations(coords :: AbstractMatrix{T}, supercell, R_lat :: Matrix{T}) :: Vector{Vector{Int}} where {T} 
+    ndims = size(coords, 1)
+    nat = size(coords, 2)
+    transv = zeros(T, ndims)
+
+    n_trans = size(R_lat, 2)
+    translations = Vector{Vector{I}}(undef, n_trans)
+
+    # Prepare the identity matrix
+    identity = zeros(I, ndims, ndims)
+    for k in 1:n_dims
+        identity[k, k] = 1
+    end
+
+    for i in 1:n_trans
+        irt = zeros(Int, nat)
+
+        # Prepare the translation vector in fractional coordinates
+        @views transv .= R_lat[:, i]
+        for k in 1:ndims
+            transv[k] ./= supercell[k]
+        end
+
+        # Get the translation map
+        get_irt!(irt, coords, identity, transv)
+
+        # Add to the final translations
+        push!(translations, irt)
+    end
+
+    translations
+end
 
 
 

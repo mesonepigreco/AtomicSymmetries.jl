@@ -27,6 +27,21 @@ but implemented in this way for performance reasons as
 it is the most convenient memory rapresentation for vectorizing the
 average calculation.
 
+Notably, this convention introduces two main properties:
+
+The ``\Gamma`` value of the fourier transform is not the average over the supercell of the same
+quantity. If you want to obtain the average, you must divide by √nq (the number of q-points).
+
+If the `R_lat` is not centered around zero, and the coordinates passed as `v_sc` are absolute values of positions,
+then the ``\Gamma`` value of the fourier transform will be shifted by a total translation which is the average of the translations of the supercell lattice
+vectors.
+
+To avoid this behaviour (which is wrong), you can use the option `absolute_positions`,
+which automatically rescales the `v_sc` to be coordinates relative
+to the respective cell origin identified by `R_lat`.
+Indeed, in this case, `R_lat` and `v_sc` must be of the same 
+units, and coordinate types (you cannot mix crystalline and cartesian).
+
 
 ## Parameters
 
@@ -40,13 +55,16 @@ average calculation.
     The correspondance for each atom in the supercell with the atom in the primitive cell.
 - `R_lat` : (3, nat_sc)
     The origin coordinates of the supercell in which the atom is
+- `absolute_positions` : Bool
+    If true [default false], removes from v_sc the value of R_lat.
 """
 function vector_r2q!(
         v_q :: AbstractArray{Complex{T}, 3},
         v_sc :: AbstractMatrix{T},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T}
+        R_lat :: AbstractMatrix{T};
+        absolute_positions :: Bool = false
     ) where {T <: AbstractFloat, I <: Integer}
 
     nq = size(q, 2)
@@ -56,8 +74,8 @@ function vector_r2q!(
 
     v_q .= 0
 
-    println("R_lat ", size(R_lat))
-    println("q_vec ", size(q))
+    println("R_lat = ", size(R_lat))
+    println("q_vec = ", size(q))
 
 
     for jq ∈ 1:nq
@@ -69,23 +87,30 @@ function vector_r2q!(
                 index_sc = 3 * (k - 1) + α
                 index_uc = 3 * (itau[k] - 1) + α
                 @simd for i ∈ 1:n_random
-                    v_q[i, index_uc, jq] += exp_value * v_sc[i, index_sc]
+                    # Remove the absolute position if needed
+                    δ_value = v_sc[i, index_sc]
+                    if absolute_positions
+                        δ_value -= R_lat[α, k]
+                    end
+
+                    v_q[i, index_uc, jq] += exp_value * δ_value
                 end
             end
         end
     end
 
-    v_q ./= √(nq)
+    v_q ./= √nq
 end
 function vector_r2q!(
-        v_q :: AbstractArray{Complex{T}, 2},
+        v_q :: AbstractMatrix{Complex{T}},
         v_sc :: AbstractVector{T},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T}
+        R_lat :: AbstractMatrix{T};
+        kwargs...
     ) where {T <: AbstractFloat, I <: Integer}
 
-    vector_r2q!(reshape(v_q, 1, size(v_q)...), reshape(v_sc, 1, size(v_sc)...), q, itau, R_lat)
+    vector_r2q!(reshape(v_q, 1, size(v_q)...), reshape(v_sc, 1, size(v_sc)...), q, itau, R_lat; kwargs...)
 end
 
 
@@ -95,13 +120,16 @@ end
         v_q :: AbstractArray{Complex{T}, 3},
         q_tot :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T}) where {T <: AbstractFloat, I <: Integer}
+        R_lat :: Matrix{T};
+        absolute_positions :: Bool = false
+        ) where {T <: AbstractFloat, I <: Integer}
     function vector_q2r!(
         v_sc :: AbstractVector{T},
         v_q :: AbstractMatrix{Complex{T}},
         q :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T}
+        R_lat :: Matrix{T};
+        absolute_positions :: Bool = false
     ) where {T <: AbstractFloat, I <: Integer}
 
 
@@ -130,13 +158,16 @@ This choice is made for performance reason in computing averages (exploiting vec
     The correspondance for each atom in the supercell with the atom in the primitive cell.
 - `R_lat : (3, nat_sc)`
     The origin coordinates of the supercell in which the atom is
+- `absolute_positions` : Bool
+    If true, add the absolute position of the cell to the transformed v_sc
 """
 function vector_q2r!(
         v_sc :: AbstractMatrix{T},
         v_q :: AbstractArray{Complex{T}, 3},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T}
+        R_lat :: AbstractMatrix{T};
+        absolute_positions :: Bool = false
     ) where {T <: AbstractFloat, I <: Integer}
 
     nq = size(q, 2)
@@ -145,6 +176,16 @@ function vector_q2r!(
     tmp_vector = zeros(Complex{T}, (n_random, 3*nat_sc))
 
     v_sc .= 0
+    if absolute_positions
+        for h in 1:nat_sc
+            for k in 1:3
+                δvalue = R_lat[k, h]
+                index = 3*(h-1) + k
+                v_sc[:, index] .+= δvalue
+            end
+        end
+    end
+
     for jq ∈ 1:nq
         for k ∈ 1:nat_sc
             @views q_dot_R = q[:, jq]' * R_lat[:, k]
@@ -160,18 +201,20 @@ function vector_q2r!(
         end
     end
 
-    v_sc .= real(tmp_vector)
+    v_sc .+= real(tmp_vector)
     v_sc ./= √(nq)
 end
+
 function vector_q2r!(
         v_sc :: AbstractVector{T},
         v_q :: AbstractArray{Complex{T}, 2},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T}
+        R_lat :: AbstractMatrix{T};
+        kwargs...
     ) where {T <: AbstractFloat, I <: Integer}
 
-    vector_q2r!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat)
+    vector_q2r!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat; kwargs)
 end
 
 
@@ -186,7 +229,7 @@ end
 Fourier transform a matrix from real to q space
 
 ```math
-M_{ab}(\vec q) = \sum_{\vec R} e^{-2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
+M_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
 ```
 
 Where ``\Phi_{ab}`` is the real space matrix, the ``b+\vec R`` indicates the corresponding atom in the supercell displaced by ``\vec R``. 
@@ -356,4 +399,117 @@ function matrix_q2r!(
         nothing
     end
 end
+
+
+@doc raw"""
+    shift_position_origin!(r_vector::AbstractVector{Complex{T}}, cell::AbstractMatrix{T}, R_lat::AbstractMatrix{T}; buffer) where T
+    shift_position_origin!(r_vectors::AbstractMatrix{Complex{T}}, cell::AbstractMatrix{T}, R_lat::AbstractMatrix{T}; buffer) where T
+
+Shifts a set of position vectors (`r_vector` or `r_vectors`) such that the average position (center of mass) of the reference lattice (`R_lat`) is moved to the origin. The function operates in-place.
+This can be employed after performing a Fourier Transform of absolute positions, to correct for non centered `R_lat`.
+
+This is typically used to remove the lattice translation from displacement vectors before calculating quantities that are invariant to rigid body translations.
+
+The average position vector of the reference lattice $\mathbf{r}_{\text{avg}}$ is calculated in Cartesian coordinates, and then subtracted from the input vectors $\mathbf{r}$.
+
+```math
+\mathbf{r}_{\text{avg}} = \frac{1}{N_{\text{atoms}}} \sum_{k=1}^{N_{\text{atoms}}} \mathbf{r}_{\text{lat}, k}
+```
+
+The position vectors are then shifted:
+```math
+\mathbf{r}' = \mathbf{r} - \mathbf{r}_{\text{avg}}
+```
+
+## Arguments
+
+- `r_vector`/`r_vectors` : The position vector(s) (of type `Complex{T}`) to be shifted in-place. 
+- `cell` : The $N_{dims} \times N_{dims}$ matrix defining the unit cell (lattice vectors). 
+- `R_lat` : The reference lattice positions (fractional/lattice coordinates, ``N_{dims} \times N_{atoms}``) whose average position determines the shift. 
+- `buffer` : An optional buffer for temporary memory allocation (Bumer.jl)
+
+## Details on `r_vectors` Matrix Method
+
+The matrix method assumes that the input `r_vectors` has the dimensions ``(N_{\text{configs}}, N_{\text{dims}} \times N_{\text{atoms,v}})``, where ``N_{\text{configs}}`` is the number of configurations, and ``N_{\text{atoms,v}}`` is the number of atoms in the vectors being shifted.
+
+The shift is applied simultaneously to all configurations using broadcasting (`@views ... .-=`).
+
+
+## Example
+
+An example of usage after the fourier transform
+
+```julia
+# Define positions_r as a n_configs, 3n_atoms_sc vector
+# Perform the fourier transform in q space
+# Here, we assume that R_lat and q_points are expressed in crystal coordinates.
+# Otherwise, just pass the identity to the cell below.
+vector_r2q!(positions_q, positions_r, q_points, itau, R_lat)
+
+# Remove the translations
+shift_position_origin!(positions_q, cell, R_lat)
+```
+"""
+function shift_position_origin!(r_vector :: AbstractVector{U}, cell :: AbstractMatrix{T}, R_lat :: AbstractMatrix{T}; buffer = default_buffer()) where {T, U <: Union{T, Complex{T}}}
+
+    n_dims = size(R_lat, 1)
+    n_atoms = size(R_lat, 2)
+    n_atoms_v = length(r_vector) ÷ n_dims
+
+    @no_escape buffer begin
+        r_lat_cart = @alloc(T, size(R_lat)...)
+        r_lat_avg = @alloc(T, n_dims)
+
+        get_cartesian_coords!(r_lat_cart, R_lat, cell)
+
+        # Average the displacement
+        r_lat_avg .= zero(T)
+        for i in 1:n_dims
+            @simd for k in 1:n_atoms
+                r_lat_avg[i] += r_lat_cart[i, k]
+            end
+        end
+        r_lat_avg ./= n_atoms
+
+        for k in 1:n_atoms_v
+            @simd for i in 1:n_dims
+                r_vector[n_dims * (k-1) + i] -= r_lat_avg[i]
+            end
+        end
+    end
+    r_vector
+end
+function shift_position_origin!(r_vectors :: AbstractMatrix{U}, cell :: AbstractMatrix{T}, R_lat :: AbstractMatrix{T}; buffer = default_buffer()) where {T, U <: Union{T, Complex{T}}}
+
+    n_dims = size(R_lat, 1)
+    n_atoms = size(R_lat, 2)
+    n_configs = size(r_vectors, 1)
+    n_atoms_v = size(r_vectors) ÷ n_dims
+
+    @no_escape buffer begin
+        r_lat_cart = @alloc(T, size(R_lat)...)
+        r_lat_avg = @alloc(T, n_dims)
+
+        get_cartesian_coords!(r_lat_cart, R_lat, cell)
+
+        # Average the displacement
+        r_lat_avg .= zero(T)
+        for i in 1:n_dims
+            @simd for k in 1:n_atoms
+                r_lat_avg[i] += r_lat_cart[i, k]
+            end
+        end
+        r_lat_avg ./= n_atoms
+
+        for k in 1:n_atoms_v
+            @simd for i in 1:n_dims
+                r_remove = r_lat_avg[i]
+                index =  n_dims * (k-1) + i
+                @views r_vectors[:, index] .-= r_remove
+            end
+        end
+    end
+    r_vectors
+end
+
 

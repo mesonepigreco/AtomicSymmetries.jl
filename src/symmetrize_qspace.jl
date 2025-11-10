@@ -8,7 +8,9 @@
     end
 
 This structure contains the information to perform the symmetrization of a dynamical matrix directly in q space.
-Note that the `q_points` needs to be in crystal coordinates,
+
+**Note that the `q_points` needs to be in crystal coordinates**,
+
 and the symmetries must be of the primitive cell.
 """
 struct SymmetriesQSpace{T} <: GenericSymmetries 
@@ -473,9 +475,95 @@ Get the `R_lat` parameter to perform the fourier transform.
 - `R_lat` the result lattice vectors, modified inplace
 - `primitive_coords` : The coordinates in the primitive cell
 - `supercell_coords` : The coordinates in the supercell
+- `itau` : The correspondence for each atom in the supercell with the respective atom in the primitive cell
 
 """
-function get_R_lat!(R_lat, primitive_coords, supercell_coords)
+function get_R_lat!(R_lat :: AbstractMatrix{T}, primitive_coords :: AbstractMatrix{T}, supercell_coords :: AbstractMatrix{T}, itau :: Vector{I}) where {T, I <: Integer}
+    nat_uc = size(primitive_coords, 2)
+    nat_sc = size(supercell_coords, 2)
 
+    @simd for i in 1:nat_sc
+        @views R_lat[:, i] .= supercell_coords[:, i]
+        @views R_lat[:, i] .-= primitive_coords[:, itau[i]]
+    end
 end
+
+
+
+@doc raw"""
+    get_supercell(q_points::AbstractMatrix{T}, cell :: AbstractMatrix{T}) :: Vector{Int}
+    get_supercell(q_points::AbstractMatrix{T}) :: Vector{Int}
+    get_supercell!(supercell::AbstractVector{I}, q_points::AbstractMatrix{T}, cell :: AbstractMatrix{T}) where {T, I<:Integer}
+    get_supercell!(supercell::AbstractVector{I}, q_points::AbstractMatrix{T}) where {T, I<:Integer}
+
+Calculates the minimum supercell dimensions required to fold a set of commensurate
+wave vectors (`q_points`) back to the Gamma point (Γ) of the Brillouin zone.
+
+The resulting supercell dimension \$S_i\$ for each spatial direction is determined
+by the reciprocal of the smallest non-zero q-point component in that direction.
+For commensurate grids, this is mathematically equivalent to:
+
+```math
+S_i = \text{round} \left( \frac{1}{\min(|q_{i}|)} \right)
+```
+
+This function is primarily used when performing calculations in a real-space supercell
+that is commensurate with the input k-point (or q-point) grid.
+
+## Arguments
+
+- `q_points`: A 2D matrix where **each column** represents a q-point vector, and
+  **each row** corresponds to a dimension (x, y, z).
+- `supercell`: An pre-allocated integer vector to store the result (used by the
+  `get_supercell!` in-place version).
+- `cell` : The primitive cell. If not provided, the code assumes that q_points are 
+    in fractional coordinates.
+
+## Important Note on Coordinates
+
+The `q_points` **must** be provided in **crystal coordinates** (fractional coordinates)
+if `cell` is not provided. 
+
+# Example
+
+```julia
+# 3 dimensions, 2 q-points
+q_points = [0.5 0.0;
+            0.0 0.5;
+            0.0 0.25]
+
+# The supercell dimensions required are based on (1/0.5, 1/0.5, 1/0.25).
+supercell = get_supercell(q_points)
+# Result: [2, 2, 4]
+```
+"""
+function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatrix{T}) where {T, I<:Integer}
+    function cellvalue(x) :: I
+        if abs(x) < 1e-10
+            return 1
+        end
+        round(1 / abs(x))
+    end
+    maximum!(cellvalue, supercell, q_points)
+end
+function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatrix{T}, cell:: AbstractMatrix{T}; buffer=default_buffer()) where {T, I<:Integer}
+    # Convert the q points in crystal coordinates
+    @no_escape buffer begin
+        q_points_fract = @alloc(T, size(q_points)...)
+        mul!(q_points_fract, cell', q_points, 1 / (2π), 0.0)
+        println("q_fract = $q_points_fract")
+        println("q_points = $q_points")
+        println("cell = $cell")
+        get_supercell!(supercell, q_points_fract)
+        nothing
+    end
+end
+function get_supercell(q_points :: AbstractMatrix{T}, args...; kwargs...) :: Vector{Int} where T
+    ndims = size(q_points, 1)
+    supercell = zeros(Int, ndims)
+    get_supercell!(supercell, q_points, args...; kwargs...)
+    supercell
+end
+
+
 
