@@ -99,10 +99,10 @@ function vector_r2q!(
         end
     end
 
-    v_q ./= nq
+    v_q ./= √nq
 end
 function vector_r2q!(
-        v_q :: AbstractArray{Complex{T}, 2},
+        v_q :: AbstractMatrix{Complex{T}},
         v_sc :: AbstractVector{T},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},

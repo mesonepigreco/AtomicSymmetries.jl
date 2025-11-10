@@ -30,40 +30,34 @@ function symmetry_violation_mask!(mask :: AbstractVector{Bool},
 
     mask .= false
 
-    println("Inside mask")
 
-    @no_escape buffer begin
-        irt = @alloc(Int, nat)
-        tmp_vector = @alloc(T, size(vector)...)
-        crystal_coordinates = @alloc(T, length(vector))
-        irt .= 0
-        irt[1] = 1
+    irt = zeros(Int, nat)
+    tmp_vector = zeros(T, size(vector)...)
+    crystal_coordinates = zeros(T, length(vector))
+    irt .= 0
+    irt[1] = 1
 
-        @show size(crystal_coordinates)
-        @show n_dims
-        @show vector
-        @show cell
+    # Convert to crystalline coordinates
+    get_crystal_coords!(reshape(crystal_coordinates, n_dims, :), 
+                       reshape(vector, n_dims, :), 
+                       cell; buffer=buffer)
 
-        # Convert to crystalline coordinates
-        get_crystal_coords!(reshape(crystal_coordinates, n_dims, :), 
-                           reshape(vector, n_dims, :), 
-                           cell; buffer=buffer)
+    for i in 1:length(symmetry_group)
+        if nat > 1
+            irt .= symmetry_group.irt[i]
+        end
+        
+        # Check the invariance
+        tmp_vector .= 0
 
-        for i in length(symmetry_group) :-1: 1
-            if nat > 1
-                irt .= symmetry_group.irt[i]
-            end
-            
-            # Check the invariance
-            tmp_vector .= 0
-            apply_sym_centroid!(tmp_vector, crystal_coordinates, symmetry_group.symmetries[i], symmetry_group.dimension, irt)
-            # println("Symmetry $i: ", symmetry_group.symmetries[i])
-            # println("Vector: ", vector)
-            # println("Transformed vector: ", tmp_vector)
 
-            if norm(tmp_vector - crystal_coordinates) > 1e-6
-                mask[i] = true
-            end
+        apply_sym_centroid!(tmp_vector, crystal_coordinates, symmetry_group.symmetries[i], symmetry_group.dimension, irt)
+        # println("Symmetry $i: ", symmetry_group.symmetries[i])
+        # println("Vector: ", vector)
+        # println("Transformed vector: ", tmp_vector)
+
+        if norm(tmp_vector - crystal_coordinates) > 1e-6
+            mask[i] = true
         end
     end
 end
@@ -92,7 +86,7 @@ function filter_invariant_symmetries!(symmetry_group :: Symmetries, vector :: Ab
     @no_escape buffer begin
         mask = @alloc(Bool, length(symmetry_group))
 
-        symmetry_mask_violation!(mask, symmetry_group, vector, cell; buffer=buffer)
+        symmetry_violation_mask!(mask, symmetry_group, vector, cell; buffer=buffer)
         # Delete from reverse to avoid bugs
         for i in length(mask):-1:1
             if mask[i]

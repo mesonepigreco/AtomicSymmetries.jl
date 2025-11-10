@@ -31,6 +31,7 @@ include("test_filter.jl")
 @testset "Filter" begin 
     test_filter()
     test_filter_full_vector()
+    test_filter_fourier()
 end
 
 @testset "Cart to Crystal" begin

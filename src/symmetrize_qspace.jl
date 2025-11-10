@@ -8,7 +8,9 @@
     end
 
 This structure contains the information to perform the symmetrization of a dynamical matrix directly in q space.
-Note that the `q_points` needs to be in crystal coordinates,
+
+**Note that the `q_points` needs to be in crystal coordinates**,
+
 and the symmetries must be of the primitive cell.
 """
 struct SymmetriesQSpace{T} <: GenericSymmetries 

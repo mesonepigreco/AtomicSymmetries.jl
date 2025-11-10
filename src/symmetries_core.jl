@@ -371,6 +371,11 @@ function apply_sym_centroid!(result :: AbstractVector{T}, centroid :: AbstractVe
     translation = nothing) where {T,U}
     # Use mul! to avoid allocating memory
     n_atoms = length(centroid) ÷ dimensions
+
+    println(typeof(sym), " strides=", Base.strides(sym))
+    println(typeof(centroid), " strides=", Base.strides(centroid))
+    println(typeof(result), " strides=", Base.strides(result))
+
     if translation == nothing
         for i ∈ 1:n_atoms 
             j = irt[i]
