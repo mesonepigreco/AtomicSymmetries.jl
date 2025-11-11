@@ -121,11 +121,9 @@ function filter_invariant_symmetries!(q_symmetry_group :: SymmetriesQSpace, vect
         @show mask
         for i in length(mask):-1:1
             if mask[i]
-                println("Deleating $i")
                 deleteat!(q_symmetry_group.symmetries.symmetries, i)
                 deleteat!(q_symmetry_group.symmetries.irt, i)
                 deleteat!(q_symmetry_group.irt_q, i)
-                deleteat!(q_symmetry_group.minus_q_index, i)
             end
         end
     end
