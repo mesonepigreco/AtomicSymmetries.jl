@@ -74,9 +74,6 @@ function vector_r2q!(
 
     v_q .= 0
 
-    println("R_lat = ", size(R_lat))
-    println("q_vec = ", size(q))
-
 
     for jq ∈ 1:nq
         for k ∈ 1:nat_sc
@@ -207,14 +204,14 @@ end
 
 function vector_q2r!(
         v_sc :: AbstractVector{T},
-        v_q :: AbstractArray{Complex{T}, 2},
+        v_q :: AbstractMatrix{Complex{T}},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
         R_lat :: AbstractMatrix{T};
         kwargs...
     ) where {T <: AbstractFloat, I <: Integer}
 
-    vector_q2r!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat; kwargs)
+    vector_q2r!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat; kwargs...)
 end
 
 

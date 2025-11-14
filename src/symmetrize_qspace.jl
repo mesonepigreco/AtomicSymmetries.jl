@@ -275,6 +275,7 @@ function symmetrize_vector_q!(target_gamma :: AbstractVector{T}, original_q :: A
 
     @no_escape buffer begin
         tmp_vector = @alloc(Complex{T}, n_modes, n_q)
+        tmp_vector .= zero(T)
 
         for i in 1:length(sym)
             sym_mat = sym.symmetries[i]
