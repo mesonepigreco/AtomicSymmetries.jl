@@ -179,7 +179,6 @@ function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T},
     @no_escape buffer begin
         tmpvector = @alloc(T, ndims)
         tmp2 = @alloc(T, ndims)
-        distance = @alloc(T, nq)
         
         for i in 1:nq
             @views mul!(tmpvector, sym_mat, q_points[:, i])
@@ -189,7 +188,9 @@ function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T},
             min_index = 0
             for j in 1:nq
                 @views tmp2 .= q_points[:, j] - tmpvector
-                tmp2 .-= floor.(tmp2)
+                tmp2 .-= round.(tmp2)
+                #println("q_$i = $(q_points[:, i]) ; q_$j = $(q_points[:, j]); Sq_$i = $tmpvector ; distance = $tmp2")
+
                 distance = sum(abs2, tmp2) 
                 if distance < min_distance
                     min_index = j
@@ -201,6 +202,30 @@ function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T},
             irt_q[i] = min_index
         end
         nothing
+    end
+
+    # Check if there are errors
+    if !allunique(irt_q)
+        error_msg = """
+Error while inizialising the symmetries in q space.
+In particular, the symmetry operation 
+S = $sym_mat
+
+Brings two distinct q points into the same vector.
+This either occurs if S has a nonzero kernel 
+(then it is a nonvalid symmetry operation), 
+or if the q points are not properly organized in a grid
+in crystal coordinates (most likely).
+
+Please, check if the q points are correctly in a uniform
+grid in fractional coordinates of the Brilluin zone.
+
+q_points = $(q_points')
+
+irt_q = $irt_q
+(Here rows are the vectors)
+"""
+        error(error_msg)
     end
 end
 
@@ -393,24 +418,23 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
         tmp_matrix ./= length(symmetries)
 
         # Apply the hermitianity
-        # for iq in 1:n_q
-        #     for h in 1:n_modes
-        #         for k in 1:n_modes
-        #             target_q[k,h, iq] = tmp_matrix[k, h, iq]
-        #             target_q[k,h, iq] += conj(tmp_matrix[h, k, iq])
-        #         end
-        #     end
-        # end
-        # target_q ./= T(2)
-        target_q .= tmp_matrix
+        for iq in 1:n_q
+            for h in 1:n_modes
+                for k in 1:n_modes
+                    target_q[k,h, iq] = tmp_matrix[k, h, iq]
+                    target_q[k,h, iq] += conj(tmp_matrix[h, k, iq])
+                end
+            end
+        end
+        target_q ./= T(2)
 
-        # tmp_matrix .= target_q
 
-        # # Apply the time-reversal symmetry
-        # for iq in 1:n_q
-        #     @views target_q[:, :, iq] .+= conj.(tmp_matrix[:, :, minus_q_index[iq]]')
-        # end
-        # target_q ./= T(2)
+        # Apply the time-reversal symmetry
+        tmp_matrix .= target_q
+        for iq in 1:n_q
+            @views target_q[:, :, iq] .+= conj.(tmp_matrix[:, :, minus_q_index[iq]]')
+        end
+        target_q ./= T(2)
         nothing
     end
 end
