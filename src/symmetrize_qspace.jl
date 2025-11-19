@@ -382,12 +382,12 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
             q_irt = irt_q[i]
 
             apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt; buffer=buffer)
-            println("After symmetrization: sym $i")
-            # @show sym_mat
-            # @show irt
-            # @show q_irt
-            # @show original_q
-            # @show tmp_matrix
+            println("Apply Symmetry $i")
+            @show sym_mat
+            @show irt
+            @show q_irt
+            @show original_q
+            @show tmp_matrix
         end
 
         tmp_matrix ./= length(symmetries)
@@ -418,7 +418,13 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
     symmetrize_matrix_q!(target_q, original_q, q_symmetries.symmetries, q_symmetries.irt_q, q_symmetries.minus_q_index; buffer=buffer)
 end
 function symmetrize_matrix_q!(matrix_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace; buffer = default_buffer())  where T
-    symmetrize_matrix_q!(matrix_q, matrix_q, q_symmetries; buffer=buffer)
+    @no_escape buffer begin
+        target = @alloc(Complex{T}, size(matrix_q)...)
+        target .= zero(T)
+        symmetrize_matrix_q!(target, matrix_q, q_symmetries; buffer=buffer)
+        matrix_q .= target
+        nothing
+    end
 end
 
 
@@ -450,6 +456,8 @@ function symmetrize_matrix_cartesian_q!(matrix_q :: AbstractArray{Complex{T}, 3}
                                       cell;
                                       cart_to_cryst = true,
                                       buffer=buffer)
+
+        @show matrix_cryst_q
 
         # Perform the symmetrization
         symmetrize_matrix_q!(matrix_cryst_q, q_symmetries; buffer)

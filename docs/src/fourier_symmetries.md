@@ -69,7 +69,7 @@ shift_position_origin!
 ```
 
 
-## Applications of symmetries in Fourier space
+## Symmetries in Q space
 
 The application of symmetries in Fourier space must also account how points in q space are mapped by the symmetry operations.
 
@@ -84,8 +84,11 @@ D(q) = D^\dagger(-q + G)
 
 therefore it is necessary also to keep track, for each q point, which one is the corresponding ``-q + G`` in the mesh. This mapping is computed by the helper function `get_minus_q!`. All these information needs to be stored when applying symmetries. Therefore we defined a new Symmetries struct that ihnerits from the `GenericSymmetries` called `SymmetriesQSpace`. Note that, to initialize the symmetries in q-space, we **must** use the symmetries object (`Symmetries`) evaluated in the primitive cell. The correct initialization of symmetries could be checked with the subroutine `check_symmetries`, which will spot if a different cell has been employed when initializing the symmetries.
 
+Since the q points must be passed in crystal coordinates, it may be useful to get the reciprocal lattice, which can be done with ``get_reciprocal_lattice!``.
+
 ```@docs
 SymmetriesQSpace
+get_reciprocal_lattice!
 AtomicSymmetries.get_irt_q!
 AtomicSymmetries.get_minus_q!
 AtomicSymmetries.check_symmetries
@@ -103,7 +106,7 @@ apply_symmetry_vectorq!
 apply_symmetry_matrixq!
 ```
 
-### Enforcing symmetries
+## Enforcing symmetries
 
 One of the most useful operation to do is enforce a specific matrix or vector in q-space to satisfy a given symmetry group.
 
@@ -152,4 +155,10 @@ Analogously, we can get the translations `R_lat` as
 
 ```@docs
 get_R_lat!
+```
+
+To get the reciprocal vectors, use
+
+```@docs
+get_reciprocal_lattice
 ```
