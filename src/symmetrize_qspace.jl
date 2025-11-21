@@ -156,9 +156,9 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
                 for j in 1:n_atoms 
                     j_s = irt[j]
                     @views mul!(work, 
-                                original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq_s], 
+                                original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq], 
                                 sym, T(1.0), T(0.0))
-                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq], 
+                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq_s], 
                         sym', work, 1.0, 1.0)
                 end
             end
@@ -170,8 +170,10 @@ end
 @doc raw"""
     get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractVector{T}, sym_mat :: AbstractMatrix)
 
-Get the correspondance q' = Sq on the provided q grid.
-Always assume everything is in crystal coordinates
+Get the correspondance ``q' = S^\dagger q`` on the provided q grid.
+Always assume everything is in crystal coordinates.
+
+This is neede for the correct application of the symmetries
 """
 function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, sym_mat :: AbstractMatrix; buffer = default_buffer()) where T
     nq = size(q_points, 2)
@@ -181,7 +183,7 @@ function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T},
         tmp2 = @alloc(T, ndims)
         
         for i in 1:nq
-            @views mul!(tmpvector, sym_mat, q_points[:, i])
+            @views mul!(tmpvector, sym_mat', q_points[:, i])
 
             # Check the closest q point
             min_distance = T(Inf)
@@ -407,12 +409,6 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
             q_irt = irt_q[i]
 
             apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt; buffer=buffer)
-            println("Apply Symmetry $i")
-            @show sym_mat
-            @show irt
-            @show q_irt
-            @show original_q
-            @show tmp_matrix
         end
 
         tmp_matrix ./= length(symmetries)
@@ -429,12 +425,12 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
         target_q ./= T(2)
 
 
-        # Apply the time-reversal symmetry
-        tmp_matrix .= target_q
-        for iq in 1:n_q
-            @views target_q[:, :, iq] .+= conj.(tmp_matrix[:, :, minus_q_index[iq]]')
-        end
-        target_q ./= T(2)
+        ## Apply the time-reversal symmetry
+        #tmp_matrix .= target_q
+        #for iq in 1:n_q
+        #    @views target_q[:, :, iq] .+= conj.(tmp_matrix[:, :, minus_q_index[iq]]')
+        #end
+        #target_q ./= T(2)
         nothing
     end
 end

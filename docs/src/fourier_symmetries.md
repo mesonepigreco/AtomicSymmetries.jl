@@ -84,11 +84,10 @@ D(q) = D^\dagger(-q + G)
 
 therefore it is necessary also to keep track, for each q point, which one is the corresponding ``-q + G`` in the mesh. This mapping is computed by the helper function `get_minus_q!`. All these information needs to be stored when applying symmetries. Therefore we defined a new Symmetries struct that ihnerits from the `GenericSymmetries` called `SymmetriesQSpace`. Note that, to initialize the symmetries in q-space, we **must** use the symmetries object (`Symmetries`) evaluated in the primitive cell. The correct initialization of symmetries could be checked with the subroutine `check_symmetries`, which will spot if a different cell has been employed when initializing the symmetries.
 
-Since the q points must be passed in crystal coordinates, it may be useful to get the reciprocal lattice, which can be done with ``get_reciprocal_lattice!``.
+Since the q points must be passed in crystal coordinates, it may be useful to get the reciprocal lattice, which can be done with ``get_reciprocal_lattice!`` (see section on crystal coordinates for the API)
 
 ```@docs
 SymmetriesQSpace
-get_reciprocal_lattice!
 AtomicSymmetries.get_irt_q!
 AtomicSymmetries.get_minus_q!
 AtomicSymmetries.check_symmetries
@@ -98,7 +97,28 @@ AtomicSymmetries.check_symmetries
 
 Applying a symmetry means transforming a vector or a matrix (already in q-space) into a new vector (matrix). If the vector (matrix) is invariant under that transformation, then that transformation belong to the symmetry group.
 
-To apply the symmetry to a matrix we use the `apply_symmetry_vectorq!`. For the matrix, we use `apply_symmetry_matrixq!`. Both these function modify in-place the first argument, storing the result of the transformation there.
+Notably, the symmetries in the supercell are always the symmetries in the primitive cell times all possible translations operated by the lattice vectors compatible with the chosen supercell. On the contrary, the symmetries in q space are always only equal to the symmetries in the primitive cell.
+The reason is that translations are automatically incorporated in the q space representation by the block theorem:
+
+```math
+D(q, q') = D(q)\delta(q - q')
+```
+
+This means that applying each symmetry operation in ``q`` space is equivalent to averaging the result of the same symmetry operation in the supercell averaging among all possible translations. Notably, a force constant matrix that satisfy the simmetry operation ``S`` if
+
+```math
+\Phi_{s(a)s(b)}^{\alpha\beta}(S\boldsymbol{R}) = \sum_{\eta\lambda}S_{\alpha\eta}S_{\beta\lambda}\Phi^{\eta\lambda}_{ab}(\boldsymbol{R})
+```
+
+where ``s(a)`` is the atom index in the primitive cell in which the atom ``a`` is mapped by the symmetry. Here, we explicitly 
+indicated with greek letters the cartesian  coordinates and latin letters the atomic indices.
+By performing the Fourier transform in both sides we get the application rule in Fourier space
+
+```math
+{\tilde\Phi}^{\alpha\beta}_{s(a)s(b)}(S\boldsymbol{q}) = \sum_{\eta\lambda}S_{\alpha\eta}S_{\beta\lambda}{\tilde\Phi}^{\eta\lambda}_{ab}(\boldsymbol{q})
+```
+
+To apply the symmetry to a matrix we use the `apply_symmetry_vectorq!`. For the matrix, we use `apply_symmetry_matrixq!`. Both these function modify in-place the first argument, storing the result of the transformation there. 
 Note that, since symmetries are stored in crystalline components, both the vector and the matrix must be in crystalline components. 
 
 ```@docs
@@ -110,10 +130,10 @@ apply_symmetry_matrixq!
 
 One of the most useful operation to do is enforce a specific matrix or vector in q-space to satisfy a given symmetry group.
 
-This can be implemented by applying the complete irreducible representation of the symmetry group. Symmetrization of an ent `\phi` is obtained as
+This can be implemented by applying the complete irreducible representation of the symmetry group. Symmetrization of an ent `\Phi` is obtained as
 
 ``
-\Phi = \frac{1}{N}\sum_{i=1}^N S_i(\phi)
+\Phi = \frac{1}{N}\sum_{i=1}^N S_i(\Phi)
 ``
 
 where ``S_i`` is the symmetry operation. The two functions performing the symmetrization are `symmetrize_matrix_q!` and `symmetrize_vector_q!`. Also in this case, the dynamical matrix must be provided in crystalline coordinates.
@@ -157,8 +177,4 @@ Analogously, we can get the translations `R_lat` as
 get_R_lat!
 ```
 
-To get the reciprocal vectors, use
 
-```@docs
-get_reciprocal_lattice
-```
