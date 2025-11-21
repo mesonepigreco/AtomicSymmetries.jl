@@ -112,9 +112,9 @@ function apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, or
         for i in 1:n_atoms
             j = irt[i]
 
-            @views mul!(target_vector[n_dims * (j - 1) + 1: n_dims * j, jq], 
+            @views mul!(target_vector[n_dims * (j - 1) + 1: n_dims * j, iq], 
                         symmetry_operation, 
-                        original_vector[n_dims * (i - 1) + 1: n_dims * i, iq],
+                        original_vector[n_dims * (i - 1) + 1: n_dims * i, jq],
                         T(1.0), T(1.0))
         end
     end
