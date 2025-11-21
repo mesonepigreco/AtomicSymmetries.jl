@@ -575,11 +575,11 @@ function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatr
     end
     maximum!(cellvalue, supercell, q_points)
 end
-function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatrix{T}, cell:: AbstractMatrix{T}; buffer=default_buffer()) where {T, I<:Integer}
+function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatrix{T}, cell :: AbstractMatrix{T}, reciprocal_vectors:: AbstractMatrix{T}; buffer=default_buffer()) where {T, I<:Integer}
     # Convert the q points in crystal coordinates
     @no_escape buffer begin
         q_points_fract = @alloc(T, size(q_points)...)
-        mul!(q_points_fract, cell', q_points, 1 / (2π), 0.0)
+        cryst_cart_conv!(q_points_fract, q_points, cell, reciprocal_vectors, false; q_space=true)
         println("q_fract = $q_points_fract")
         println("q_points = $q_points")
         println("cell = $cell")
