@@ -27,7 +27,10 @@ function (asr::ASRConstraint!)(vector::AbstractVector{T}) where T
 
     # Apply the ASR constraint
     for i in 1:nat
-        @views mytensor[:, i] .-= marginal
+        @simd for k in 1:dimension
+            index = dimension*(i-1) + k
+            vector[index] -= marginal[k]
+        end
     end
 end
 

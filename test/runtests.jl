@@ -73,4 +73,8 @@ end
     include("test_symmetrize_qspace.jl")
     test_fourier_matrix()
     test_symmetrize_q_space()
+
+    # A test on a complex noncubic cell
+    include("test_symmetrize_cartesian_qspace.jl")
+    test_symmetrize_cartesian_qspace()
 end

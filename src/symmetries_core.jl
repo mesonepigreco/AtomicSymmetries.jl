@@ -889,11 +889,11 @@ function get_translations(coords :: AbstractMatrix{T}, supercell, R_lat :: Matri
     transv = zeros(T, ndims)
 
     n_trans = size(R_lat, 2)
-    translations = Vector{Vector{I}}(undef, n_trans)
+    translations = Vector{Vector{Int}}(undef, n_trans)
 
     # Prepare the identity matrix
-    identity = zeros(I, ndims, ndims)
-    for k in 1:n_dims
+    identity = zeros(Int, ndims, ndims)
+    for k in 1:ndims
         identity[k, k] = 1
     end
 
@@ -903,14 +903,14 @@ function get_translations(coords :: AbstractMatrix{T}, supercell, R_lat :: Matri
         # Prepare the translation vector in fractional coordinates
         @views transv .= R_lat[:, i]
         for k in 1:ndims
-            transv[k] ./= supercell[k]
+            transv[k] /= supercell[k]
         end
 
         # Get the translation map
         get_irt!(irt, coords, identity, transv)
 
         # Add to the final translations
-        push!(translations, irt)
+        translations[i] = irt
     end
 
     translations

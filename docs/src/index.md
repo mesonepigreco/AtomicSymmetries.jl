@@ -43,7 +43,7 @@ complete_symmetry_group!(symmetry_group)
 ```
 
 Once completed, the symmetry group can be exploited to enforce symmetry constraints on 
-displacement vectors and 2-rank tensors as
+displacement vectors and 2-rank tensors. In particular, the following subroutines work in **crystal** coordinates. See below for how to perform the symmetrization in **cartesian** coordinates.
 
 ```julia
 symmetry_group.symmetrize_centroid!(vector)
@@ -63,7 +63,7 @@ AtomicSymmetries.get_spherical_symmetry_group
 AtomicSymmetries.get_full_inversion_symmetry_group
 ```
 
-### Structure symmetrization
+## Structure and Dynamical Matrix symmetrization
 
 Sometimes it is useful to symmetrize the atomic positions of a crystal structure.
 To follow the correct Wyckoff positions. 
@@ -85,10 +85,19 @@ apply_translations!(matrix, translations)
 ```
 where the `translations` is a vector of vector of Ints, each element represent a translations which maps each respective atomic index in the corresponding one. The `translations` object can be obtained from a symmetry group using the subroutine `get_translations`.
 
+
+For imposing symmetries on a vector or a 2-rank array (like the force constant matrix) directly in cartesian space, you can use
+```julia
+symmetrize_vector!(vector, unit_cell, symmetry_group)
+symmetrize_fc!(matrix, unit_cell, symmetry_group)
+```
+
 Here the APIs for these calls
 
 ```@docs
 symmetrize_positions!
+symmetrize_vector!
+symmetrize_fc!
 get_translations
 apply_translations!
 ```

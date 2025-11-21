@@ -112,9 +112,9 @@ function apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, or
         for i in 1:n_atoms
             j = irt[i]
 
-            @views mul!(target_vector[n_dims * (j - 1) + 1: n_dims * j, jq], 
+            @views mul!(target_vector[n_dims * (j - 1) + 1: n_dims * j, iq], 
                         symmetry_operation, 
-                        original_vector[n_dims * (i - 1) + 1: n_dims * i, iq],
+                        original_vector[n_dims * (i - 1) + 1: n_dims * i, jq],
                         T(1.0), T(1.0))
         end
     end
@@ -156,9 +156,9 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
                 for j in 1:n_atoms 
                     j_s = irt[j]
                     @views mul!(work, 
-                                original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq_s], 
+                                original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq], 
                                 sym, T(1.0), T(0.0))
-                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq], 
+                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq_s], 
                         sym', work, 1.0, 1.0)
                 end
             end
@@ -170,8 +170,10 @@ end
 @doc raw"""
     get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractVector{T}, sym_mat :: AbstractMatrix)
 
-Get the correspondance q' = Sq on the provided q grid.
-Always assume everything is in crystal coordinates
+Get the correspondance ``q' = S^\dagger q`` on the provided q grid.
+Always assume everything is in crystal coordinates.
+
+This is neede for the correct application of the symmetries
 """
 function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, sym_mat :: AbstractMatrix; buffer = default_buffer()) where T
     nq = size(q_points, 2)
@@ -179,17 +181,18 @@ function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T},
     @no_escape buffer begin
         tmpvector = @alloc(T, ndims)
         tmp2 = @alloc(T, ndims)
-        distance = @alloc(T, nq)
         
         for i in 1:nq
-            @views mul!(tmpvector, sym_mat, q_points[:, i])
+            @views mul!(tmpvector, sym_mat', q_points[:, i])
 
             # Check the closest q point
             min_distance = T(Inf)
             min_index = 0
             for j in 1:nq
                 @views tmp2 .= q_points[:, j] - tmpvector
-                tmp2 .-= floor.(tmp2)
+                tmp2 .-= round.(tmp2)
+                #println("q_$i = $(q_points[:, i]) ; q_$j = $(q_points[:, j]); Sq_$i = $tmpvector ; distance = $tmp2")
+
                 distance = sum(abs2, tmp2) 
                 if distance < min_distance
                     min_index = j
@@ -201,6 +204,30 @@ function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T},
             irt_q[i] = min_index
         end
         nothing
+    end
+
+    # Check if there are errors
+    if !allunique(irt_q)
+        error_msg = """
+Error while inizialising the symmetries in q space.
+In particular, the symmetry operation 
+S = $sym_mat
+
+Brings two distinct q points into the same vector.
+This either occurs if S has a nonzero kernel 
+(then it is a nonvalid symmetry operation), 
+or if the q points are not properly organized in a grid
+in crystal coordinates (most likely).
+
+Please, check if the q points are correctly in a uniform
+grid in fractional coordinates of the Brilluin zone.
+
+q_points = $(q_points')
+
+irt_q = $irt_q
+(Here rows are the vectors)
+"""
+        error(error_msg)
     end
 end
 
@@ -275,6 +302,7 @@ function symmetrize_vector_q!(target_gamma :: AbstractVector{T}, original_q :: A
 
     @no_escape buffer begin
         tmp_vector = @alloc(Complex{T}, n_modes, n_q)
+        tmp_vector .= zero(T)
 
         for i in 1:length(sym)
             sym_mat = sym.symmetries[i]
@@ -381,35 +409,28 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
             q_irt = irt_q[i]
 
             apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt; buffer=buffer)
-            println("After symmetrization: sym $i")
-            # @show sym_mat
-            # @show irt
-            # @show q_irt
-            # @show original_q
-            # @show tmp_matrix
         end
 
         tmp_matrix ./= length(symmetries)
 
         # Apply the hermitianity
-        # for iq in 1:n_q
-        #     for h in 1:n_modes
-        #         for k in 1:n_modes
-        #             target_q[k,h, iq] = tmp_matrix[k, h, iq]
-        #             target_q[k,h, iq] += conj(tmp_matrix[h, k, iq])
-        #         end
-        #     end
-        # end
-        # target_q ./= T(2)
-        target_q .= tmp_matrix
+        for iq in 1:n_q
+            for h in 1:n_modes
+                for k in 1:n_modes
+                    target_q[k,h, iq] = tmp_matrix[k, h, iq]
+                    target_q[k,h, iq] += conj(tmp_matrix[h, k, iq])
+                end
+            end
+        end
+        target_q ./= T(2)
 
-        # tmp_matrix .= target_q
 
-        # # Apply the time-reversal symmetry
-        # for iq in 1:n_q
-        #     @views target_q[:, :, iq] .+= conj.(tmp_matrix[:, :, minus_q_index[iq]]')
-        # end
-        # target_q ./= T(2)
+        ## Apply the time-reversal symmetry
+        #tmp_matrix .= target_q
+        #for iq in 1:n_q
+        #    @views target_q[:, :, iq] .+= conj.(tmp_matrix[:, :, minus_q_index[iq]]')
+        #end
+        #target_q ./= T(2)
         nothing
     end
 end
@@ -417,7 +438,13 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
     symmetrize_matrix_q!(target_q, original_q, q_symmetries.symmetries, q_symmetries.irt_q, q_symmetries.minus_q_index; buffer=buffer)
 end
 function symmetrize_matrix_q!(matrix_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace; buffer = default_buffer())  where T
-    symmetrize_matrix_q!(matrix_q, matrix_q, q_symmetries; buffer=buffer)
+    @no_escape buffer begin
+        target = @alloc(Complex{T}, size(matrix_q)...)
+        target .= zero(T)
+        symmetrize_matrix_q!(target, matrix_q, q_symmetries; buffer=buffer)
+        matrix_q .= target
+        nothing
+    end
 end
 
 
@@ -449,6 +476,8 @@ function symmetrize_matrix_cartesian_q!(matrix_q :: AbstractArray{Complex{T}, 3}
                                       cell;
                                       cart_to_cryst = true,
                                       buffer=buffer)
+
+        @show matrix_cryst_q
 
         # Perform the symmetrization
         symmetrize_matrix_q!(matrix_cryst_q, q_symmetries; buffer)
@@ -546,11 +575,11 @@ function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatr
     end
     maximum!(cellvalue, supercell, q_points)
 end
-function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatrix{T}, cell:: AbstractMatrix{T}; buffer=default_buffer()) where {T, I<:Integer}
+function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatrix{T}, cell :: AbstractMatrix{T}, reciprocal_vectors:: AbstractMatrix{T}; buffer=default_buffer()) where {T, I<:Integer}
     # Convert the q points in crystal coordinates
     @no_escape buffer begin
         q_points_fract = @alloc(T, size(q_points)...)
-        mul!(q_points_fract, cell', q_points, 1 / (2π), 0.0)
+        cryst_cart_conv!(q_points_fract, q_points, cell, reciprocal_vectors, false; q_space=true)
         println("q_fract = $q_points_fract")
         println("q_points = $q_points")
         println("cell = $cell")
