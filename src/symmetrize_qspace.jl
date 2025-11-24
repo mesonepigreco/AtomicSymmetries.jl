@@ -37,7 +37,6 @@ end
 Base.isempty(x :: SymmetriesQSpace) = isempty(x.symmetries)
 Base.length(x :: SymmetriesQSpace) = length(x.symmetries)
 function Base.getindex(x :: SymmetriesQSpace, k) 
-    println("Getting $k")
     return x.symmetries.symmetries[k]
 end
 
@@ -62,22 +61,18 @@ above `n_atoms`).
 `false` otherwise.
 """
 function check_symmetries(q_symmetries :: SymmetriesQSpace{T}, n_atoms :: Int) :: Bool where T
-    println("Checking symmetries")
     for i in 1:length(q_symmetries)
-        println("My $i")
         n_length = length(q_symmetries.symmetries.irt[i])
 
         if n_length > n_atoms
             return false
         end
         for k in 1:n_length
-            println("k = $k")
             if q_symmetries.symmetries.irt[i][k] > n_atoms
                 return false
             end
         end
     end
-    println("Check symmetries Good!")
     return true
 end
 
@@ -104,8 +99,6 @@ function apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, or
     n_dims = size(symmetry_operation, 1)
     n_atoms = size(target_vector, 1) ÷ n_dims
 
-    println("Size target: $(size(target_vector))")
-    println("Size source: $(size(original_vector))")
 
     for iq in 1:nq
         jq = irt_q[iq]
@@ -191,7 +184,6 @@ function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T},
             for j in 1:nq
                 @views tmp2 .= q_points[:, j] - tmpvector
                 tmp2 .-= round.(tmp2)
-                #println("q_$i = $(q_points[:, i]) ; q_$j = $(q_points[:, j]); Sq_$i = $tmpvector ; distance = $tmp2")
 
                 distance = sum(abs2, tmp2) 
                 if distance < min_distance
@@ -357,7 +349,6 @@ function symmetrize_vector_cartesian_q!(vector_q_cart:: AbstractArray{Complex{T}
         vector_q_cart[:, 1] .= vector_cryst
         tmp_vect .= 0
 
-        println("Size in: $(size(tmp_vect)), $(size(vector_q_cart))")
 
         symmetrize_vector_q!(tmp_vect, vector_q_cart, 
                              symmetries.symmetries,
@@ -580,9 +571,6 @@ function get_supercell!(supercell :: AbstractVector{I}, q_points :: AbstractMatr
     @no_escape buffer begin
         q_points_fract = @alloc(T, size(q_points)...)
         cryst_cart_conv!(q_points_fract, q_points, cell, reciprocal_vectors, false; q_space=true)
-        println("q_fract = $q_points_fract")
-        println("q_points = $q_points")
-        println("cell = $cell")
         get_supercell!(supercell, q_points_fract)
         nothing
     end
