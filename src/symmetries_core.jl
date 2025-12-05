@@ -34,6 +34,13 @@ v_{\text{irt[i]}} = S v_i
 The name irt stands for "index of the representative of the transformation".
 and it is in line with the notation used in the Quantum Espresso and the CellConstructor codes.
 
+The ``unit_cell_translations`` attribute contains the list of translational vectors for each symmetry that reports atoms after the symmetry application into their equivalent primitive cell position. This is equal to
+
+```math
+S\vec a =  \vec {s(a)} + \vec t_{s, a}
+```
+where ``s(a)`` is the equivalent atom to ``a`` in the primitive cell mapped by the ``S`` symmetry operation. The translation vector ``\vec t_{s, a}`` is stored in ``unit_cell_translations``. Each element correspond to the relative symmetry operation, and it is a matrix of dimension ``(dimension, n_particles)``. Each column correspond to the translation vector of each atom.
+```
 """
 mutable struct Symmetries{T} <: GenericSymmetries
     symmetries :: Vector{Matrix{T}}
@@ -45,6 +52,7 @@ mutable struct Symmetries{T} <: GenericSymmetries
     symmetrize_centroid! :: Union{Function, Nothing}
     enforce_noninteracting :: Vector{Int}
     translations :: Vector{Vector{T}}
+    unit_cell_translations :: Vector{Matrix{T}}
 end
 get_nsymmetries(sym :: Symmetries) = length(sym.symmetries)
 get_dimensions(sym :: Symmetries) = sym.dimension
@@ -347,9 +355,9 @@ function apply_sym_fc!(result :: AbstractMatrix{T}, fc :: AbstractMatrix{T}, sym
             i_s = irt[i]
             for j in 1:n_atoms 
                 j_s = irt[j]
-                @views mul!(work, fc[dimensions*(i_s-1) + 1: dimensions*i_s, dimensions*(j_s-1)+1 : dimensions*j_s], sym, 1.0, 0.0)
-                @views mul!(result[dimensions*(i-1) + 1: dimensions*i, dimensions*(j - 1) + 1: dimensions*j], 
-                    sym', work, 1.0, 1.0)
+                @views mul!(work, fc[dimensions*(i-1) + 1: dimensions*i, dimensions*(j-1)+1 : dimensions*j], sym', 1.0, 0.0)
+                @views mul!(result[dimensions*(i_s-1) + 1: dimensions*i_s, dimensions*(j_s - 1) + 1: dimensions*j_s], 
+                    sym, work, 1.0, 1.0)
             end
         end
         nothing
@@ -368,7 +376,7 @@ irt indicates how the symmetry maps particle into each other.
 translation, if present, is a vector of which all atoms are translated after the symmetry operation.
 """
 function apply_sym_centroid!(result :: AbstractVector{T}, centroid :: AbstractVector{T}, sym :: AbstractMatrix{U}, dimensions :: Int, irt :: AbstractVector{Int};
-    translation = nothing) where {T,U}
+        translation = nothing, buffer=default_buffer()) where {T,U}
     # Use mul! to avoid allocating memory
     n_atoms = length(centroid) ÷ dimensions
 
@@ -378,15 +386,19 @@ function apply_sym_centroid!(result :: AbstractVector{T}, centroid :: AbstractVe
             @views mul!(result[dimensions*(j-1) + 1: dimensions*j], sym, centroid[dimensions*(i-1) + 1: dimensions*i], 1.0, 1.0)    
         end
     else
-        partial_result = zeros(T, dimensions)
-        for i ∈ 1:n_atoms 
-            j = irt[i]
-            @views mul!(partial_result, sym, centroid[dimensions*(i-1) + 1: dimensions*i], 1.0, 0.0)    
-            
-            # Convert the partial result into the primitive cell
-            # @views to_primitive_cell_cryst!(partial_result, [0.0, 0.0, 0.0])
+        @no_escape buffer begin
+            partial_result = @alloc(T, dimensions)
+            partial_result .= 0.0
+            for i ∈ 1:n_atoms 
+                j = irt[i]
+                @views mul!(partial_result, sym, centroid[dimensions*(i-1) + 1: dimensions*i], 1.0, 0.0)    
+                
+                # Convert the partial result into the primitive cell
+                # @views to_primitive_cell_cryst!(partial_result, [0.0, 0.0, 0.0])
 
-            result[dimensions*(j-1) + 1: dimensions*j] .+= partial_result .+ translation
+                result[dimensions*(j-1) + 1: dimensions*j] .+= partial_result .+ translation
+            end
+            nothing
         end
     end
 end
@@ -502,6 +514,43 @@ function enforce_noninteracting!(fc :: AbstractMatrix{T}, list_of_particles :: A
 end
 
 
+function initialize_uc_translations!(sym :: Symmetries{T}, 
+        crystal_coordinates :: AbstractMatrix{T};
+        buffer=default_buffer()) where {T}
+    nat = size(crystal_coordinates, 2)
+    ndims = size(crystal_coordinates, 1)
+
+    # Check if they match with the symmetry information
+    @assert nat == sym.n_particles "The number of particles in the coordinates ($nat) does not match with the symmetry information ($(sym.n_particles))"
+    @assert ndims == sym.dimension "The number of dimensions in the coordinates ($ndims) does not match with the symmetry information ($(sym.dimension))"
+
+    if length(sym.unit_cell_translations) == 0
+        # Initialize the unit cell translations
+        for k in 1:length(sym)
+            push!(sym.unit_cell_translations, zeros(T, ndims, nat))
+        end
+    end
+
+    @no_escape buffer begin
+        tmp_vector = @alloc(T, ndims* nat)
+
+        for i in 1:length(sym)
+            tmp_vector .= zero(T)
+            apply_sym_centroid!(tmp_vector, reshape(crystal_coordinates, :),
+                                sym.symmetries[i],
+                                sym.dimension,
+                                sym.irt[i];
+                                translations = sym.translations[i],
+                                buffer=buffer)
+            for k in 1:nat
+                @views tmp_vector[ndims * (k-1)+1:ndims*k]  .-= crystal_coordinates[:, sym.irt[i][k]]
+                @views sym.unit_cell_translations[i][:, k] .= tmp_vector[ndims * (k-1)+1:ndims*k] 
+            end
+        end
+        nothing
+    end
+end
+
 
 @doc raw"""
     is_initialized(sym :: Symmetries{T}) :: Bool where {T}
@@ -530,7 +579,7 @@ end
 
 
 function get_empty_symmetry_group(T :: Type) :: Symmetries{T}
-    return Symmetries{T}([], 0, 0, nothing, [], nothing, nothing, [], [])
+    return Symmetries{T}([], 0, 0, nothing, [], nothing, nothing, [], [], [])
 end
 
 
@@ -721,7 +770,7 @@ The function applies the transformation to each atom `i` and finds which atom `j
 
 The result `irt` is an array where irt[i] = j means: "The atom with original index i is transformed to the position originally occupied by the atom with original index j."
 
-Mathematically, it finds `j` for each `i` such that: `matrix * coords[:, i] + translation ≈ coords[:, j] + P` where P is an integer lattice vector. The function handles this periodicity by comparing distances in fractional coordinates.
+Mathematically, it finds `j` for each `i` such that: `matrix * coords[:, i] + translation + unit_cell_translations[:, i] ≈ coords[:, j]` where unit_cell_translations[:, i] is the lattice translations to match the transformed atoms `i` with the untrasformed `j`. The function handles this periodicity by comparing distances in fractional coordinates.
 
 
 ## Arguments
@@ -729,6 +778,7 @@ Mathematically, it finds `j` for each `i` such that: `matrix * coords[:, i] + tr
 - `irt::Vector{Int}`: Output array (in-place modified) where `irt[i] = j` means that atom `i` 
   in the original structure is transformed to the position of atom `j` in the original structure.
   In other words, the transformation maps atom `i` to atom `irt[i]`.
+- `unit_cell_translations::AbstractVector` The vector where the translations that moves the transformed atoms into the corresponding primitive cell are stored.
 - `coords::AbstractMatrix`: The atomic positions in fractional coordinates, with shape (3, N).
 - `matrix::AbstractMatrix`: The rotation matrix (3×3).
 - `translation::AbstractVector`: The translation vector in fractional coordinates.
@@ -745,7 +795,7 @@ Mathematically, it finds `j` for each `i` such that: `matrix * coords[:, i] + tr
 If `irt[3] = 5`, this means the symmetry operation transforms atom 3 to the position 
 that atom 5 occupies in the original structure.
 """
-function get_irt!(irt, coords, matrix, translation)
+function get_irt!(irt, unit_cell_translations, coords, matrix, translation; buffer=default_buffer())
     new_coords = matrix * coords
 
     nat = size(coords, 2)
@@ -755,48 +805,58 @@ function get_irt!(irt, coords, matrix, translation)
     debugvalue = false
     dist = 0
 
-    for i in 1:nat 
-        min_dist = 1000.0
-        min_j = 1
-        for j in 1:nat
-            nval = 0
-            for k in 1:ndims
-                dist = new_coords[k, i] - coords[k, j] + translation[k]
-                nval += (dist - round(dist))^2
+    @no_escape buffer begin
+        trans_vect = @alloc(eltype(coords), ndims)
+        good_trans_vect = @alloc(eltype(coords), ndims)
+
+        for i in 1:nat 
+            min_dist = 1000.0
+            min_j = 1
+            good_trans_vect .= 0
+            for j in 1:nat
+                nval = 0
+                for k in 1:ndims
+                    dist = new_coords[k, i] - coords[k, j] + translation[k]
+                    nval += (dist - round(dist))^2
+                    trans_vect[k] = dist
+                end
+
+                if debugvalue
+                    println("i: $i, j: $j, distance: $nval, notransl: $(norm(new_coords[:, i] - coords[:, j])); min_dist: $min_dist")
+
+                end
+
+                if nval < min_dist
+                    min_j = j
+                    min_dist = nval
+                    good_trans_vect .= trans_vect
+                end
+
+                if min_dist < 1e-5
+                    break
+                end
+            end
+            if min_dist > 0.001
+                println("The distance between the atoms is too large: $min_dist")
+                println("Origin Atom $i: ", coords[:, i])
+                println("Target Atom $min_j: ", coords[:, min_j])
+                println("Origin Atom (after trans) $i: ", new_coords[:, i])
+
+                error("Error while initializing the symmetry group.")
+            # else
+            #     println("IRT[$min_j] = $i")
+            #     println("min_dist = $min_dist")
+            #     println("original coords = ", coords[:, min_j])
+            #     println("transformed coords = ", new_coords[:, i])
+            #     println("matrix = ", matrix)
+            #     println()
             end
 
-            if debugvalue
-                println("i: $i, j: $j, distance: $nval, notransl: $(norm(new_coords[:, i] - coords[:, j])); min_dist: $min_dist")
-
-            end
-
-            if nval < min_dist
-                min_j = j
-                min_dist = nval
-            end
-
-            if min_dist < 1e-5
-                break
-            end
+            #irt[min_j] = i
+            irt[i] = min_j
+            unit_cell_translations[:, i] .= trans_vect
         end
-        if min_dist > 0.001
-            println("The distance between the atoms is too large: $min_dist")
-            println("Origin Atom $i: ", coords[:, i])
-            println("Target Atom $min_j: ", coords[:, min_j])
-            println("Origin Atom (after trans) $i: ", new_coords[:, i])
-
-            error("Error while initializing the symmetry group.")
-        # else
-        #     println("IRT[$min_j] = $i")
-        #     println("min_dist = $min_dist")
-        #     println("original coords = ", coords[:, min_j])
-        #     println("transformed coords = ", new_coords[:, i])
-        #     println("matrix = ", matrix)
-        #     println()
-        end
-
-        #irt[min_j] = i
-        irt[i] = min_j
+        nothing
     end
 end
 
@@ -883,7 +943,7 @@ For the mapping, see `get_irt!` documentation.
 
 - `translations` : A vector containing the mapping between atoms operated by the respective translations in `R_lat`.
 """
-function get_translations(coords :: AbstractMatrix{T}, supercell, R_lat :: Matrix{T}) :: Vector{Vector{Int}} where {T} 
+function get_translations(coords :: AbstractMatrix{T}, supercell, R_lat :: Matrix{T}; buffer=default_buffer()) :: Vector{Vector{Int}} where {T} 
     ndims = size(coords, 1)
     nat = size(coords, 2)
     transv = zeros(T, ndims)
@@ -897,20 +957,24 @@ function get_translations(coords :: AbstractMatrix{T}, supercell, R_lat :: Matri
         identity[k, k] = 1
     end
 
-    for i in 1:n_trans
-        irt = zeros(Int, nat)
+    @no_escape buffer begin
+        tmp_buffer = @alloc(T, ndims * nat)
 
-        # Prepare the translation vector in fractional coordinates
-        @views transv .= R_lat[:, i]
-        for k in 1:ndims
-            transv[k] /= supercell[k]
+        for i in 1:n_trans
+            irt = zeros(Int, nat)
+
+            # Prepare the translation vector in fractional coordinates
+            @views transv .= R_lat[:, i]
+            for k in 1:ndims
+                transv[k] /= supercell[k]
+            end
+
+            # Get the translation map
+            get_irt!(irt, tmp_buffer, coords, identity, transv)
+
+            # Add to the final translations
+            translations[i] = irt
         end
-
-        # Get the translation map
-        get_irt!(irt, coords, identity, transv)
-
-        # Add to the final translations
-        translations[i] = irt
     end
 
     translations

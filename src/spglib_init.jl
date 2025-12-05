@@ -66,11 +66,13 @@ function get_symmetry_group_from_spglib(positions::AbstractMatrix{<: Real}, cell
     @debug "Adding the symmetry operations"
     for i in 2:length(R)
         irt = zeros(Int, nat)
-        get_irt!(irt, positions, R[i], T[i])
+        trans_uc = zeros(type, 3, nat)
+        get_irt!(irt, trans_uc, positions, R[i], T[i])
 
         # Add the symmetry operation
         add_symmetry!(sym_group, R[i], update=false; irt=irt)
         push!(sym_group.translations, T[i])
+        push!(sym_group.unit_cell_translations, trans_uc)
     end
 
     round_translations!(sym_group)

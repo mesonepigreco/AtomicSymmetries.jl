@@ -89,11 +89,7 @@ function test_fc_sym_pbte_uc(; verbose=false)
 
     # Check if the force constant matrix is the same
     # as the correct one
-    for i in 1:size(fc_sym, 1)
-        for j in 1:size(fc_sym, 2)
-            @test fc_nosym[i, j] ≈ fc_sym[i, j] atol = 1e-6
-        end
-    end
+    @test isapprox(fc_nosym, fc_sym; atol=1e-6)
 end
 
 function test_fc_sym_pbte_444(; verbose=false)
@@ -135,11 +131,7 @@ function test_fc_sym_pbte_444(; verbose=false)
     symmetrize_fc!(fc_nosym, cell, sym_group)
 
     # Compare with the correct FC
-    for i in 1:size(fc_sym, 1)
-        for j in 1:size(fc_sym, 2)
-            @test fc_nosym[i, j] ≈ fc_sym[i, j] atol = 1e-6
-        end
-    end
+    @test isapprox(fc_nosym, fc_sym; atol=1e-6)
 end
 
 

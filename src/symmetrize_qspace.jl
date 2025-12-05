@@ -15,12 +15,17 @@ and the symmetries must be of the primitive cell.
 """
 struct SymmetriesQSpace{T} <: GenericSymmetries 
     symmetries :: Symmetries{T}
+    q_points :: Matrix{T}
     irt_q :: Vector{Vector{Int}}
     minus_q_index :: Vector{Int}
 end
 function SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatrix{T}; buffer = default_buffer()) :: SymmetriesQSpace{T} where T
     n_symmetries = length(symmetries)
     n_q = size(q_points, 2)
+    n_dims = size(q_points, 1)
+
+    my_q_points = zeros(T, n_dims, n_q)
+    my_q_points .= q_points
 
     irt_q = Vector{Vector{Int}}(undef, n_symmetries)
     for i in 1:n_symmetries
@@ -31,7 +36,7 @@ function SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatri
     minus_q_index = zeros(Int, n_q)
     get_minus_q!(minus_q_index, q_points)
 
-    SymmetriesQSpace(symmetries, irt_q, minus_q_index)
+    SymmetriesQSpace(symmetries, my_q_points, irt_q, minus_q_index)
 end
 
 Base.isempty(x :: SymmetriesQSpace) = isempty(x.symmetries)
@@ -102,6 +107,7 @@ function apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, or
 
     for iq in 1:nq
         jq = irt_q[iq]
+
         for i in 1:n_atoms
             j = irt[i]
 
@@ -134,7 +140,9 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
         original_matrix :: AbstractArray{Complex{T}, 3},
         sym :: AbstractMatrix{U},
         irt :: AbstractVector{Int},
-        irt_q :: AbstractVector{Int}; buffer = default_buffer()) where {T, U}
+        irt_q :: AbstractVector{Int},
+        unit_cell_translations :: AbstractMatrix{T},
+        ; buffer = default_buffer()) where {T, U}
 
     nq = size(target_matrix, 3)
     n_dims = size(sym, 1)
@@ -142,17 +150,22 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
 
     @no_escape buffer begin
         work = @alloc(Complex{T}, n_dims, n_dims)
+        δt = @alloc(T, n_dims)
         for iq in 1:nq
             iq_s = irt_q[iq]
             for i ∈ 1:n_atoms
                 i_s = irt[i]
                 for j in 1:n_atoms 
                     j_s = irt[j]
+                    @views δt .= unit_cell_translations[:, i] .- unit_cell_translations[:, j]
+                    @views q_dot_t = dot(q_points[:, iq_s], δt)
+                    @views phase_factor = exp(1im * 2π * q_dot_t)
+
                     @views mul!(work, 
-                                original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq], 
-                                sym, T(1.0), T(0.0))
-                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq_s], 
-                        sym', work, 1.0, 1.0)
+                                original_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j-1)+1 : n_dims*j, iq], 
+                                sym', T(1.0), T(0.0))
+                    @views mul!(target_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s - 1) + 1: n_dims*j_s, iq_s], 
+                        sym, work, phase_factor, 1.0)
                 end
             end
         end
@@ -163,10 +176,10 @@ end
 @doc raw"""
     get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractVector{T}, sym_mat :: AbstractMatrix)
 
-Get the correspondance ``q' = S^\dagger q`` on the provided q grid.
+Get the correspondance ``q' = S q`` on the provided q grid.
 Always assume everything is in crystal coordinates.
 
-This is neede for the correct application of the symmetries
+This is needed for the correct application of the symmetries
 """
 function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, sym_mat :: AbstractMatrix; buffer = default_buffer()) where T
     nq = size(q_points, 2)
@@ -176,7 +189,7 @@ function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T},
         tmp2 = @alloc(T, ndims)
         
         for i in 1:nq
-            @views mul!(tmpvector, sym_mat', q_points[:, i])
+            @views mul!(tmpvector, sym_mat, q_points[:, i])
 
             # Check the closest q point
             min_distance = T(Inf)
@@ -192,7 +205,6 @@ function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T},
                 end
             end
 
-            # TODO: Check if it is this or the opposite
             irt_q[i] = min_index
         end
         nothing
@@ -468,7 +480,6 @@ function symmetrize_matrix_cartesian_q!(matrix_q :: AbstractArray{Complex{T}, 3}
                                       cart_to_cryst = true,
                                       buffer=buffer)
 
-        @show matrix_cryst_q
 
         # Perform the symmetrization
         symmetrize_matrix_q!(matrix_cryst_q, q_symmetries; buffer)
