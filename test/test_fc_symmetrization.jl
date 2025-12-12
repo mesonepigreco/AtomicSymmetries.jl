@@ -51,6 +51,9 @@ function test_fc_sym_pbte_uc(; verbose=false)
     fc_nosym = readdlm(joinpath(@__DIR__, "fc_cart_small_nosym.txt"))
     fc_sym = readdlm(joinpath(@__DIR__, "fc_cart_pbte_sym.txt"))
 
+    asr! = ASRConstraint!(3)
+    asr!(fc_nosym)
+
     # Convert the matrix to crystal coordinates
     fc_nosym_crystal = zeros(Float64, size(fc_nosym)...)
     test_cartesian = zeros(Float64, size(fc_nosym)...)
@@ -64,11 +67,8 @@ function test_fc_sym_pbte_uc(; verbose=false)
         end
     end
 
-
     # Perform the symmetrization
     symmetry_group = get_symmetry_group_from_spglib(positions, cell, atoms_types)
-    asr! = ASRConstraint!(3)
-    asr!(fc_nosym)
     symmetrize_fc!(fc_nosym, cell, symmetry_group)
 
     if verbose

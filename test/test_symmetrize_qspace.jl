@@ -114,8 +114,9 @@ function test_symmetrize_q_space(; verbose=false)
     i_sym = 3
 
     irt = zeros(Int, nat * n_sc)
+    trans_vect = zeros(Float64, ndims, nat * n_sc) 
     #TODO: It may not be the same symmetry (that is why it crashes). Check the translation
-    AtomicSymmetries.get_irt!(irt, super_positions, uc_group.symmetries[i_sym], uc_group.translations[i_sym] ./ supercell)
+    AtomicSymmetries.get_irt!(irt, trans_vect, super_positions, uc_group.symmetries[i_sym], uc_group.translations[i_sym] ./ supercell)
     AtomicSymmetries.apply_sym_centroid!(u_next, u_coordinates[1, :], uc_group.symmetries[i_sym], ndims, irt)
 
     # Apply the symmetry in q-space
@@ -198,7 +199,8 @@ function test_symmetrize_q_space(; verbose=false)
         apply_translations!(fc_trial, translations)
 
         # Update irt
-        AtomicSymmetries.get_irt!(irt, super_positions, uc_group.symmetries[i_sym], uc_group.translations[i_sym] ./ supercell)
+        trans_vect = zeros(Float64, ndims, nat * n_sc)
+        AtomicSymmetries.get_irt!(irt, trans_vect, super_positions, uc_group.symmetries[i_sym], uc_group.translations[i_sym] ./ supercell)
 
         
         # Perform the fourier transform of the dynamical matrix
@@ -232,7 +234,10 @@ function test_symmetrize_q_space(; verbose=false)
                                                dynq_trial,
                                                uc_group.symmetries[i_sym],
                                                uc_group.irt[i_sym],
-                                               irt_q)
+                                               irt_q,
+                                               trans_vect,
+                                               q_vec
+                                              )
         AtomicSymmetries.matrix_q2r!(fc_trial, dynq_back2, q_vec, super_itau, R_lat; translations=translations)
         # Now, fc_trial contains the dynamical matrix with the symmetry applied in q space
         # Let us apply the symmetry also to fc_backward1 -> fc_backward2

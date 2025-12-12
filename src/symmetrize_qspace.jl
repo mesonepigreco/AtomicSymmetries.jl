@@ -111,16 +111,22 @@ function apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, or
         for i in 1:n_atoms
             j = irt[i]
 
-            @views mul!(target_vector[n_dims * (j - 1) + 1: n_dims * j, iq], 
+            @views mul!(target_vector[n_dims * (j - 1) + 1: n_dims * j, jq], 
                         symmetry_operation, 
-                        original_vector[n_dims * (i - 1) + 1: n_dims * i, jq],
+                        original_vector[n_dims * (i - 1) + 1: n_dims * i, iq],
                         T(1.0), T(1.0))
         end
     end
 end
 
 @doc raw"""
-    apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3}, original_matrix :: AbstractArray{Complex{T}, 3}, symmetry_operation :: AbstractMatrix{U}, irt :: Vector{Int}, q_points :: AbstractMatrix{T}; buffer = default_buffer())
+    apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
+        original_matrix :: AbstractArray{Complex{T}, 3},
+        sym :: AbstractMatrix{U},
+        irt :: AbstractVector{Int},
+        irt_q :: AbstractVector{Int},
+        unit_cell_translations :: AbstractMatrix{T},
+        ; buffer = default_buffer()) where {T, U}
 
 
 Apply the symmetry on the matrix in q space
@@ -134,6 +140,7 @@ In other words, all the atoms coordinates are computed from the same origin of t
 - `symmetry_operation` : The 3x3 symmetry 
 - `irt` : The atom-atom association by symmetry
 - `irt_q` : The q-q association by symmetry
+- `unit_cell_translations` : The translation vectors to move the transformed atom in the primitive cell
 - `buffer` : The Bumper.jl buffer for caching memory allocations [Optional]
 """
 function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
@@ -142,6 +149,7 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
         irt :: AbstractVector{Int},
         irt_q :: AbstractVector{Int},
         unit_cell_translations :: AbstractMatrix{T},
+        q_points :: AbstractMatrix{T}
         ; buffer = default_buffer()) where {T, U}
 
     nq = size(target_matrix, 3)
@@ -157,15 +165,15 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
                 i_s = irt[i]
                 for j in 1:n_atoms 
                     j_s = irt[j]
-                    @views δt .= unit_cell_translations[:, i] .- unit_cell_translations[:, j]
+                    @views δt .= unit_cell_translations[:, i_s] .- unit_cell_translations[:, j_s]
                     @views q_dot_t = dot(q_points[:, iq_s], δt)
                     @views phase_factor = exp(1im * 2π * q_dot_t)
 
                     @views mul!(work, 
-                                original_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j-1)+1 : n_dims*j, iq], 
-                                sym', T(1.0), T(0.0))
-                    @views mul!(target_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s - 1) + 1: n_dims*j_s, iq_s], 
-                        sym, work, phase_factor, 1.0)
+                                original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq], 
+                                sym, T(1.0), T(0.0))
+                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq_s], 
+                        sym', work, phase_factor, 1.0)
                 end
             end
         end
@@ -176,20 +184,29 @@ end
 @doc raw"""
     get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractVector{T}, sym_mat :: AbstractMatrix)
 
-Get the correspondance ``q' = S q`` on the provided q grid.
+Get the correspondance ``q' = S_\text{recip} q`` on the provided q grid.
 Always assume everything is in crystal coordinates.
+
+Note that in reciprocal space (crystal coordinates) the symmetry operation is the inverse transpose.
+
+```math
+S_\text{recip} = (S_\text{direct})^{-T}
+```
+The provided `sym_mat` is assumed to be in direct space.
 
 This is needed for the correct application of the symmetries
 """
-function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, sym_mat :: AbstractMatrix; buffer = default_buffer()) where T
+function get_irt_q!(irt_q :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, sym_mat :: AbstractMatrix{U}; buffer = default_buffer()) where {T, U}
     nq = size(q_points, 2)
     ndims = size(q_points, 1)
     @no_escape buffer begin
         tmpvector = @alloc(T, ndims)
         tmp2 = @alloc(T, ndims)
+        sym_rec = @alloc(U, ndims, ndims)
+        sym_rec .= inv(sym_mat)'
         
         for i in 1:nq
-            @views mul!(tmpvector, sym_mat, q_points[:, i])
+            @views mul!(tmpvector, sym_rec, q_points[:, i])
 
             # Check the closest q point
             min_distance = T(Inf)
@@ -395,8 +412,9 @@ The matrix must be in crystal coordinates.
 - `symmetries` : The symmetry group
 - `irt_q` : A vector (one for each symmetry) of the correspondances of q points. For each symmetry can be obtained from `get_irt_q!`
 - `minus_q_index` : A vector containing for each `q` the corresponding ``\vec {q'} = -\vec q + \vec G``, where ``\vec G`` is a generic reciprocal lattice vector.
+- `q_points` : The vector containing the actual q points
 """
-function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, symmetries :: Symmetries, irt_q :: Vector{Vector{Int}}, minus_q_index::Vector{Int}; buffer = default_buffer())  where T
+function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, symmetries :: Symmetries, irt_q :: Vector{Vector{Int}}, minus_q_index::Vector{Int}, q_points :: AbstractMatrix{T}; buffer = default_buffer())  where T
 
     n_modes = size(original_q, 1)
     n_q = size(original_q, 3)
@@ -411,7 +429,7 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
             irt = symmetries.irt[i]
             q_irt = irt_q[i]
 
-            apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt; buffer=buffer)
+            apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt, q_points; buffer=buffer)
         end
 
         tmp_matrix ./= length(symmetries)
@@ -438,7 +456,7 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
     end
 end
 function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace; buffer = default_buffer())  where T
-    symmetrize_matrix_q!(target_q, original_q, q_symmetries.symmetries, q_symmetries.irt_q, q_symmetries.minus_q_index; buffer=buffer)
+    symmetrize_matrix_q!(target_q, original_q, q_symmetries.symmetries, q_symmetries.irt_q, q_symmetries.minus_q_index, q_symmetries.q_points; buffer=buffer)
 end
 function symmetrize_matrix_q!(matrix_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace; buffer = default_buffer())  where T
     @no_escape buffer begin

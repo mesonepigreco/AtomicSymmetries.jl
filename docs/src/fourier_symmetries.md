@@ -102,7 +102,7 @@ This means that applying each symmetry operation in ``q`` space is equivalent to
 The application of a symmetry in q space can be performed by considering how the force-constant matrix transform in real space under a symmetry operation ``S``.
 
 ```math
-S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R} e^{2\pi i \bm q\cdot \bm R}S\Phi_{S\bm a, S(\bm b + \bm R)}S^\dagger
+S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R} e^{2\pi i \bm q\cdot \bm R}S^\dagger\Phi_{S\bm a, S(\bm b + \bm R)}S
 ```
 The transformation also changes which atoms are considered. However, we must be careful with the convention adopted for the Fourier transform. In fact, we have
 that $\bm a$ and $\bm b$ are the positions on the atom in the primitive cell considered. The vectors $S\bm a$ and $S(\bm b + \bm R)$ may not correspond to atoms in the primitive cell, but rather folded in the supercell. 
@@ -113,28 +113,38 @@ what is the translation vector ``\bm t_{s,a}`` that brings the vector ``S\bm a``
 ```
 
 ```math
-S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R} e^{2\pi i \bm q\cdot \bm R}S\Phi_{s(a) + \bm t_{s,a}, s(b) + \bm t_{s, b} + S\bm R}S^\dagger
+S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R} e^{2\pi i \bm q\cdot \bm R}S^\dagger\Phi_{s(a) + \bm t_{s,a}, s(b) + \bm t_{s, b} + S\bm R}S
 ```
 
 Exploiting the translational invariance, we can remove the $\bm t_{s,a}$ vector from the first index of the supercell force constant matrix, and rewrite the expression as
 
 
 ```math
-S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R} e^{2\pi i \bm q\cdot \bm R}S\Phi_{s(a), s(b) + \bm t_{s, b} - \bm t_{s, a} + S\bm R}S^\dagger
+S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R} e^{2\pi i \bm q\cdot \bm R}S^\dagger\Phi_{s(a), s(b) + \bm t_{s, b} - \bm t_{s, a} + S\bm R}S
 ```
 By defining ``\bm R' = \bm t_{s, b} - \bm t_{s, a} + S\bm R``, we can rewrite the summation in ``\bm R'`` as
 
 
 ```math
-S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R'} e^{2\pi i \bm q\cdot S^\dagger(\bm R' + \bm t_{s,a} - \bm t_{s,b})}S\Phi_{s(a), s(b) + \bm R'}S^\dagger
+S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R'} e^{2\pi i \bm q\cdot S^{-1} (\bm R' + \bm t_{s,a} - \bm t_{s,b})}S^\dagger\Phi_{s(a), s(b) + \bm R'}S
 ```
-Which is equivalent to the Fourier transform of the dynamical matrix at the transformed q-point ``S\bm q``, rotated by ``S``, times a phase factor
+Since we work in crystal coordinates and reciprocal vectors, ``S^{-1}\neq S^\dagger``. Therefore, we have
 
 ```math
-S[\tilde\Phi_{ab}(\bm q)] = S \tilde\Phi_{s(a)s(b)}(S\bm q) S^\dagger e^{2\pi i (S\bm q)\cdot ( \bm t_{s,a} - \bm t_{s,b})}
+S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R'} e^{2\pi i [(\bm S^{-1})^\dagger\bm q]\cdot(\bm R' + \bm t_{s,a} - \bm t_{s,b})}S^\dagger\Phi_{s(a), s(b) + \bm R'}S
 ```
 
-Note that the ``Sq`` vector in the phase factor and in the dynamical matrix can be always folded back into the first Brilluin zone. In fact the dynamical matrix is periodic in the reciprocal vector, while the phase factor is multiplied by a direct lattice vector. Thus, by adding a reciprocal lattice vector ``\bm G`` to ``S\bm q``, the phase factor is multiplied by ``e^{2\pi i \bm G\cdot ( \bm t_{s,a} - \bm t_{s,b})}``, which is always equal to 1.
+Which is equivalent to the Fourier transform of the dynamical matrix at the transformed q-point ``(\bm S^{-1})^\dagger\bm q``, times a phase factor.
+This is how symmetries operates in q space:
+```math
+\bm S_\text{recip} = \left(\bm S^{-1}\right)^\dagger
+```
+
+```math
+S[\tilde\Phi_{ab}(\bm q)] = S^\dagger \tilde\Phi_{s(a)s(b)}(S_\text{recip}\bm q) S e^{2\pi i (S_\text{recip}\bm q)\cdot ( \bm t_{s,a} - \bm t_{s,b})}
+```
+
+Note that the ``S_\text{recip}q`` vector in the phase factor and in the dynamical matrix can be always folded back into the first Brilluin zone. In fact the dynamical matrix is periodic in the reciprocal vector, while the phase factor is multiplied by a direct lattice vector. Thus, by adding a reciprocal lattice vector ``\bm G`` to ``S_\text{recip}\bm q``, the phase factor is multiplied by ``e^{2\pi i \bm G\cdot ( \bm t_{s,a} - \bm t_{s,b})}``, which is always equal to 1.
 
 This transformation for each q point is operated by the subroutine `apply_symmetry_matrixq!`. Both these function modify in-place the first argument, storing the result of the transformation there. 
 Note that, since symmetries are stored in crystalline components, both the vector and the matrix must be in crystalline components. This makes it also important that the ``\bm q`` points are provided in crystalline coordinates, to correctly compute the phase factor and the transformed ``S\bm q``.

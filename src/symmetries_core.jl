@@ -355,9 +355,9 @@ function apply_sym_fc!(result :: AbstractMatrix{T}, fc :: AbstractMatrix{T}, sym
             i_s = irt[i]
             for j in 1:n_atoms 
                 j_s = irt[j]
-                @views mul!(work, fc[dimensions*(i-1) + 1: dimensions*i, dimensions*(j-1)+1 : dimensions*j], sym', 1.0, 0.0)
-                @views mul!(result[dimensions*(i_s-1) + 1: dimensions*i_s, dimensions*(j_s - 1) + 1: dimensions*j_s], 
-                    sym, work, 1.0, 1.0)
+                @views mul!(work, fc[dimensions*(i_s-1) + 1: dimensions*i_s, dimensions*(j_s-1)+1 : dimensions*j_s], sym, 1.0, 0.0)
+                @views mul!(result[dimensions*(i-1) + 1: dimensions*i, dimensions*(j - 1) + 1: dimensions*j], 
+                    sym', work, 1.0, 1.0)
             end
         end
         nothing
@@ -854,7 +854,7 @@ function get_irt!(irt, unit_cell_translations, coords, matrix, translation; buff
 
             #irt[min_j] = i
             irt[i] = min_j
-            unit_cell_translations[:, i] .= trans_vect
+            unit_cell_translations[:, i] .= good_trans_vect
         end
         nothing
     end
