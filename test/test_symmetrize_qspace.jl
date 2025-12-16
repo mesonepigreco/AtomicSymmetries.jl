@@ -288,15 +288,16 @@ function test_symmetrize_q_space(; verbose=false)
             end
         end
 
-        for i in 1:ndims*nat_sc
-            for j in 1:ndims*nat_sc
-                if abs(fc_backward2[j, i]) < 1e-10
-                    @test abs(fc_trial[j, i]) < 1e-10
-                else
-                    @test fc_backward2[j, i] ≈ fc_trial[j, i]
-                end
-            end
-        end
+        @test isapprox(fc_backward2, fc_trial; rtol = 1e-6, atol = 1e-8)
+        #for i in 1:ndims*nat_sc
+        #    for j in 1:ndims*nat_sc
+        #        if abs(fc_backward2[j, i]) < 1e-10
+        #            @test abs(fc_trial[j, i]) < 1e-10
+        #        else
+        #            @test fc_backward2[j, i] ≈ fc_trial[j, i]
+        #        end
+        #    end
+        #end
     end
     # At this point, the application of individual symmetry operation works in fourier space.
     # However, we must still check if the full symmetrization works

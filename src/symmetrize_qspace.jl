@@ -411,10 +411,11 @@ The matrix must be in crystal coordinates.
 - `original_q` : The original matrix in q-space of size `n_modes, n_modes, nq`. It could be the same as target_q
 - `symmetries` : The symmetry group
 - `irt_q` : A vector (one for each symmetry) of the correspondances of q points. For each symmetry can be obtained from `get_irt_q!`
+- `unit_cell_translations` :: Vector{Matrix{T}} : The translations of the unit cell to bring back the atoms in the primitive cell after the symmetry operation. Each vector elements corresponds to one symmetry operation, then the matrix is a n_dims x n_atoms translation. This is usually the same as the content of `symmetries.unit_cell_translations`.
 - `minus_q_index` : A vector containing for each `q` the corresponding ``\vec {q'} = -\vec q + \vec G``, where ``\vec G`` is a generic reciprocal lattice vector.
 - `q_points` : The vector containing the actual q points
 """
-function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, symmetries :: Symmetries, irt_q :: Vector{Vector{Int}}, minus_q_index::Vector{Int}, q_points :: AbstractMatrix{T}; buffer = default_buffer())  where T
+function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, symmetries :: Symmetries, irt_q :: Vector{Vector{Int}}, unit_cell_translations :: Vector{Matrix{T}}, minus_q_index::Vector{Int}, q_points :: AbstractMatrix{T}; buffer = default_buffer())  where T
 
     n_modes = size(original_q, 1)
     n_q = size(original_q, 3)
@@ -429,7 +430,7 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
             irt = symmetries.irt[i]
             q_irt = irt_q[i]
 
-            apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt, q_points; buffer=buffer)
+            apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt, unit_cell_translations[i], q_points; buffer=buffer)
         end
 
         tmp_matrix ./= length(symmetries)
@@ -456,7 +457,7 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
     end
 end
 function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace; buffer = default_buffer())  where T
-    symmetrize_matrix_q!(target_q, original_q, q_symmetries.symmetries, q_symmetries.irt_q, q_symmetries.minus_q_index, q_symmetries.q_points; buffer=buffer)
+    symmetrize_matrix_q!(target_q, original_q, q_symmetries.symmetries, q_symmetries.irt_q, q_symmetries.symmetries.unit_cell_translations, q_symmetries.minus_q_index, q_symmetries.q_points; buffer=buffer)
 end
 function symmetrize_matrix_q!(matrix_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace; buffer = default_buffer())  where T
     @no_escape buffer begin

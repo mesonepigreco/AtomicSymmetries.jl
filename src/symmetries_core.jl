@@ -756,6 +756,9 @@ function get_identity_symmetry_group(T :: Type;
         push!(syms.translations, zeros(T, dims))
     end
 
+    # Initialize the unit cell translations
+    push!(syms.unit_cell_translations, zeros(T, dims, n_atoms))
+
     return syms
 end
 
