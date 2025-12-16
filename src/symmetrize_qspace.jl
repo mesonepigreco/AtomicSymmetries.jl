@@ -170,9 +170,9 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
                     @views phase_factor = exp(1im * 2π * q_dot_t)
 
                     @views mul!(work, 
-                                original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq], 
+                                original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq_s], 
                                 sym, T(1.0), T(0.0))
-                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq_s], 
+                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq], 
                         sym', work, phase_factor, 1.0)
                 end
             end
