@@ -88,11 +88,13 @@ function test_symmetrize_cartesian_qspace(; verbose=false)
         irt = symmetry_group_q.symmetries.irt[i]
         q_irt = symmetry_group_q.irt_q[i]
         my_irt = symmetry_group_sc.irt[i]
+        uc_trans = symmetry_group_q.symmetries.unit_cell_translations[i]
+        q_pts = symmetry_group_q.q_points
 
         # My IRT
 
         # Apply the symmetry
-        AtomicSymmetries.apply_symmetry_matrixq!(q_tmp_mat, q_matrix, symmat, irt, q_irt)
+        AtomicSymmetries.apply_symmetry_matrixq!(q_tmp_mat, q_matrix, symmat, irt, q_irt, uc_trans, q_pts)
 
         # Apply the symmetry in real space
         AtomicSymmetries.apply_sym_fc!(rs_tmp_mat, rs_matrix, symmat, 3, my_irt)

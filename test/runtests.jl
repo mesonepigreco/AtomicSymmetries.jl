@@ -77,4 +77,8 @@ end
     # A test on a complex noncubic cell
     include("test_symmetrize_cartesian_qspace.jl")
     test_symmetrize_cartesian_qspace()
+
+    # A test with fractional translations
+    include("test_fractional_symmetries.jl")
+    test_fractional_symmetries_qspace()
 end
