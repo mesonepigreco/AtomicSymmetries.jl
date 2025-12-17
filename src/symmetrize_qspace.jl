@@ -166,7 +166,7 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
                 for j in 1:n_atoms 
                     j_s = irt[j]
                     @views δt .= unit_cell_translations[:, i_s] .- unit_cell_translations[:, j_s]
-                    @views q_dot_t = dot(q_points[:, iq_s], δt)
+                    @views q_dot_t = dot(q_points[:, iq], δt)
                     @views phase_factor = exp(1im * 2π * q_dot_t)
 
                     @views mul!(work, 
