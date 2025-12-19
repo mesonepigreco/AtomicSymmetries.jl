@@ -92,6 +92,7 @@ function filter_invariant_symmetries!(symmetry_group :: Symmetries, vector :: Ab
             if mask[i]
                 deleteat!(symmetry_group.symmetries, i)
                 deleteat!(symmetry_group.irt, i)
+                deleteat!(symmetry_group.unit_cell_translations, i)
             end
         end
     end
@@ -123,6 +124,7 @@ function filter_invariant_symmetries!(q_symmetry_group :: SymmetriesQSpace, vect
             if mask[i]
                 deleteat!(q_symmetry_group.symmetries.symmetries, i)
                 deleteat!(q_symmetry_group.symmetries.irt, i)
+                deleteat!(q_symmetry_group.symmetries.unit_cell_translations, i)
                 deleteat!(q_symmetry_group.irt_q, i)
             end
         end

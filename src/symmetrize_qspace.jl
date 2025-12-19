@@ -156,6 +156,7 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
     n_dims = size(sym, 1)
     n_atoms = size(target_matrix, 1) ÷ n_dims
 
+
     @no_escape buffer begin
         work = @alloc(Complex{T}, n_dims, n_dims)
         δt = @alloc(T, n_dims)
@@ -429,6 +430,12 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
             sym_mat = symmetries.symmetries[i]
             irt = symmetries.irt[i]
             q_irt = irt_q[i]
+
+            #println("Applying symmetry $i")
+            #println("Symmetry matrix:")
+            #println(sym_mat)
+            #@show q_irt
+            #@show unit_cell_translations[i]
 
             apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt, unit_cell_translations[i], q_points; buffer=buffer)
         end

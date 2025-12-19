@@ -18,9 +18,11 @@ function test_fractional_symmetries_qspace(; verbose=false)
     types_sc = [Int.(types_sc_[:])...]
     itau = [Int.(itau_[:])...]
 
+    supercell_dim = 4
+
     coords_sc = reshape(coords_sc_, 3, :)
     primitive_cell = copy(unit_cell)
-    unit_cell .*= 2
+    unit_cell .*= supercell_dim
     cryst_coords = similar(coords_sc)
     reciprocal_vectors = similar(unit_cell)
     get_reciprocal_lattice!(reciprocal_vectors, unit_cell)
@@ -47,6 +49,7 @@ function test_fractional_symmetries_qspace(; verbose=false)
     
     # Get the unit cell coordinates
     coords_uc = coords_sc[:, 1:nat]
+    cryst_coords = similar(coords_uc)
     types_uc = types_sc[1:nat]
 
     get_reciprocal_lattice!(reciprocal_vectors, primitive_cell)
