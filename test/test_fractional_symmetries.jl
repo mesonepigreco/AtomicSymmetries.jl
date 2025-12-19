@@ -9,7 +9,7 @@ using PhysicalConstants
 function test_fractional_symmetries_qspace(; verbose=false)
     # Load the data files on LaAlO3
     Φ_sc = readdlm(joinpath(@__DIR__, "data", "LaAlO3_phisc.txt"))
-    unit_cell = readdlm(joinpath(@__DIR__, "data", "LaAlO3_unitcell.txt"))
+    primitive_cell = readdlm(joinpath(@__DIR__, "data", "LaAlO3_unitcell.txt"))
     coords_sc_ = readdlm(joinpath(@__DIR__, "data", "LaAlO3_coords_sc.txt"))
     itau_ = readdlm(joinpath(@__DIR__, "data", "LaAlO3_itau.txt"))
     qpoints = readdlm(joinpath(@__DIR__, "data", "LaAlO3_qpoints.txt"))
@@ -18,8 +18,10 @@ function test_fractional_symmetries_qspace(; verbose=false)
     types_sc = [Int.(types_sc_[:])...]
     itau = [Int.(itau_[:])...]
 
+    supercell_dim = 4
+
     coords_sc = reshape(coords_sc_, 3, :)
-    unit_cell .*= 2
+    unit_cell = primitive_cell .* supercell_dim
     cryst_coords = similar(coords_sc)
     reciprocal_vectors = similar(unit_cell)
     get_reciprocal_lattice!(reciprocal_vectors, unit_cell)
@@ -30,8 +32,6 @@ function test_fractional_symmetries_qspace(; verbose=false)
     # Get the symmetries in the supercell
     symmetries_supercell = get_symmetry_group_from_spglib(cryst_coords, unit_cell, types_sc)
 
-        translations = get_translations(symmetries_supercell)
-
     # Get the dynamical matrix in q space
     n_q = size(qpoints, 2)
     n_dims = size(qpoints, 1)
@@ -40,8 +40,8 @@ function test_fractional_symmetries_qspace(; verbose=false)
     
     # Get the unit cell coordinates
     coords_uc = coords_sc[:, 1:nat]
+    cryst_coords = similar(coords_uc)
     types_uc = types_sc[1:nat]
-    primitive_cell = unit_cell ./ 2
 
     get_reciprocal_lattice!(reciprocal_vectors, primitive_cell)
     cryst_cart_conv!(cryst_coords, coords_uc, primitive_cell, reciprocal_vectors, false; q_space=false)
