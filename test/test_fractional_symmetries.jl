@@ -9,7 +9,7 @@ using PhysicalConstants
 function test_fractional_symmetries_qspace(; verbose=false)
     # Load the data files on LaAlO3
     Φ_sc = readdlm(joinpath(@__DIR__, "data", "LaAlO3_phisc.txt"))
-    primitive_cell = readdlm(joinpath(@__DIR__, "data", "LaAlO3_unitcell.txt"))
+    unit_cell = readdlm(joinpath(@__DIR__, "data", "LaAlO3_unitcell.txt"))
     coords_sc_ = readdlm(joinpath(@__DIR__, "data", "LaAlO3_coords_sc.txt"))
     itau_ = readdlm(joinpath(@__DIR__, "data", "LaAlO3_itau.txt"))
     qpoints = readdlm(joinpath(@__DIR__, "data", "LaAlO3_qpoints.txt"))
@@ -22,7 +22,7 @@ function test_fractional_symmetries_qspace(; verbose=false)
 
     coords_sc = reshape(coords_sc_, 3, :)
     primitive_cell = copy(unit_cell)
-    unit_cell .*= 2
+    unit_cell .*= supercell_dim
     cryst_coords = similar(coords_sc)
     reciprocal_vectors = similar(unit_cell)
     get_reciprocal_lattice!(reciprocal_vectors, unit_cell)
