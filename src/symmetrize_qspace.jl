@@ -270,7 +270,6 @@ function get_minus_q!(minus_q_index :: AbstractVector{Int}, q_points :: Abstract
         nq = size(q_points, 2)
         tmpvector = @alloc(T, ndims)
         tmp2 = @alloc(T, ndims)
-        distance = @alloc(T, nq)
         
         for i in 1:nq
             @views tmpvector .= -q_points[:, i]
@@ -280,7 +279,7 @@ function get_minus_q!(minus_q_index :: AbstractVector{Int}, q_points :: Abstract
             min_index = 0
             for j in 1:nq
                 @views tmp2 .= q_points[:, j] - tmpvector
-                tmp2 .-= floor.(tmp2)
+                tmp2 .-= round.(tmp2)
                 distance = sum(abs2, tmp2) 
                 if distance < min_distance
                     min_index = j
