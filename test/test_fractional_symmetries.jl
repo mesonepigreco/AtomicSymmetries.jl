@@ -100,7 +100,19 @@ function test_fractional_symmetries_qspace(; verbose=false)
 
         end
         @test isapprox(Φ_q[:, :, i], Φ_q_real_space_sym[:, :, i]; atol=1e-10, rtol=1e-6)
+
+        if verbose
+            delta_minus_q = maximum(abs.(Φ_q[:, :, i] - conj.(Φ_q[:, :, symmetries_qspace.minus_q_index[i]])))
+            println("iq = $i; -q mapped to iq = ", symmetries_qspace.minus_q_index[i])
+            println("q = $(symmetries_qspace.q_points[:, i])")
+            println("minus q = $(symmetries_qspace.q_points[:, symmetries_qspace.minus_q_index[i]])")
+            println("Δ = $delta_minus_q")
+            println()
+        end
+
+        @test isapprox(Φ_q[:, :, i], conj.(Φ_q[:, :, symmetries_qspace.minus_q_index[i]]); rtol=1e-10, atol=1e-12)
     end
+
 end
 
 
