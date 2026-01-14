@@ -441,16 +441,16 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
 
         tmp_matrix ./= length(symmetries)
 
-        # Apply the hermitianity
-        for iq in 1:n_q
-            for h in 1:n_modes
-                for k in 1:n_modes
-                    target_q[k,h, iq] = tmp_matrix[k, h, iq]
-                    target_q[k,h, iq] += conj(tmp_matrix[h, k, iq])
-                end
-            end
-        end
-        target_q ./= T(2)
+        ## Apply the hermitianity
+        #for iq in 1:n_q
+        #    for h in 1:n_modes
+        #        for k in 1:n_modes
+        #            target_q[k,h, iq] = tmp_matrix[k, h, iq]
+        #            target_q[k,h, iq] += tmp_matrix[h, k, minus_q_index[iq]]
+        #        end
+        #    end
+        #end
+        #target_q ./= T(2)
 
 
         ## Apply the time-reversal symmetry
