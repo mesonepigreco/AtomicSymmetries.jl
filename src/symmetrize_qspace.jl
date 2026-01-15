@@ -440,6 +440,7 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
         end
 
         tmp_matrix ./= length(symmetries)
+        target_q .= tmp_matrix
 
         ## Apply the hermitianity
         #for iq in 1:n_q
