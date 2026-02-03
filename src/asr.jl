@@ -1,3 +1,5 @@
+abstract type ASRRule <: Function end
+
 @doc raw"""
 ASRConstraint!
 
@@ -12,7 +14,7 @@ my_asr!(my_tensor)
 
 This will apply the ASR constraint to the tensor `my_tensor` in place.
 """
-struct ASRConstraint!
+struct ASRConstraint! <: ASRRule
     dimension::Int
 end
 function (asr::ASRConstraint!)(vector::AbstractVector{T}) where T
