@@ -180,7 +180,7 @@ center of mass for each mode `i`.
     trans_mask = .!non_trans_mask
     ```
 """
-function translation_mask!(mask :: AbstractVector{Bool}, pols :: AbstractMatrix{T}, masses :: Vector{T}; buffer=default_buffer()) where T
+function translation_mask!(mask :: AbstractVector{Bool}, pols :: AbstractMatrix{T}, masses :: Vector{U}; buffer=default_buffer()) where {T, U}
 
     mask .= false
     nmod = length(mask)
