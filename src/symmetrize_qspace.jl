@@ -255,6 +255,8 @@ end
 
 @doc raw"""
     get_minus_q!(minus_q_index :: AbstractVector{Int}, q_points :: AbstractMatrix{T}; buffer = default_buffer()) where T
+    get_minus_q!(minus_q_index :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, reciprocal_lattice :: AbstractMatrix{T}; buffer = default_buffer()) where T
+
 
 Identify for each q point what is the corresponding -q:
 
@@ -263,6 +265,17 @@ Identify for each q point what is the corresponding -q:
 ``
 
 where ``\vec G`` is a reciprocal vector. Since this is done in crystal coordinates``\vec G`` are all possible integers.
+
+The reciprocal vectors is only needed if the q points are in cartesian coordinates.
+
+## Parameters
+
+- `minus_q_index` : The result vector (modified inplace)
+- `q_points` : The q points (in crystal coordinates if no `reciprocal_lattice` is provided, cartesian otherwise)
+- `cell` : The primitive cell (column-based). Only if `q_points` are in cartesian coordinates. [Optional]
+- `reciprocal_lattice` : The reciprocal lattice vectors (column-based). Only if `q_points` are in cartesian coordinates. [Optional]
+- `buffer` : The Bumper.jl buffer for caching memory allocations [Optional, keyword only]
+
 """
 function get_minus_q!(minus_q_index :: AbstractVector{Int}, q_points :: AbstractMatrix{T}; buffer = default_buffer()) where T
     @no_escape buffer begin
@@ -290,6 +303,17 @@ function get_minus_q!(minus_q_index :: AbstractVector{Int}, q_points :: Abstract
             # TODO: Check if it is this or the opposite
             minus_q_index[i] = min_index
         end
+        nothing
+    end
+end
+function get_minus_q!(minus_q_indes :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, cell :: AbstractMatrix{T}, reciprocal_vectors :: AbstractMatrix{T}; buffer=default_buffer()) where T
+    n_q = size(q_points, 2)
+    n_dims = size(q_points, 1)
+    @no_escape buffer begin
+        q_cryst = @alloc(T, n_dims, n_q)
+        cryst_cart_conv!(q_cryst, q_points, cell, reciprocal_lattice, false; q_space=true)
+
+        get_minus_q!(minus_q_indes, q_cryst; buffer=buffer)
         nothing
     end
 end
@@ -440,26 +464,26 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
         end
 
         tmp_matrix ./= length(symmetries)
-        #target_q .= tmp_matrix
+        target_q .= tmp_matrix
 
         ## Apply the hermitianity
-        for iq in 1:n_q
-            for h in 1:n_modes
-                for k in 1:n_modes
-                    target_q[k,h, iq] = tmp_matrix[k, h, iq]
-                    target_q[k,h, iq] += tmp_matrix[h, k, minus_q_index[iq]]
-                end
-            end
-        end
-        target_q ./= T(2)
+        #for iq in 1:n_q
+        #    for h in 1:n_modes
+        #        for k in 1:n_modes
+        #            target_q[k,h, iq] = tmp_matrix[k, h, iq]
+        #            target_q[k,h, iq] += tmp_matrix[h, k, minus_q_index[iq]]
+        #        end
+        #    end
+        #end
+        #target_q ./= T(2)
 
 
-        # Apply the time-reversal symmetry
-        tmp_matrix .= target_q
-        for iq in 1:n_q
-            @views target_q[:, :, iq] .+= conj.(tmp_matrix[:, :, minus_q_index[iq]]')
-        end
-        target_q ./= T(2)
+        ## Apply the time-reversal symmetry
+        #tmp_matrix .= target_q
+        #for iq in 1:n_q
+        #    @views target_q[:, :, iq] .+= conj.(tmp_matrix[:, :, minus_q_index[iq]]')
+        #end
+        #target_q ./= T(2)
         nothing
     end
 end
@@ -521,6 +545,46 @@ function symmetrize_matrix_cartesian_q!(matrix_q :: AbstractArray{Complex{T}, 3}
     end
 end
 
+
+
+@doc raw"""
+    impose_hermitianity_q!(matrix_q :: AbstractArray{Complex{T}, 3}, minus_q_index; buffer=default_buffer()) where T
+
+Impose the hermitianity and time-reversal symmetry on the dynamical matrix in q space.
+
+## Parameters
+
+- `matrix_q` : The dynamical matrix in q space (modified inplace)
+- `minus_q_index` : A vector containing for each `q` the corresponding ``\vec {q'} = -\vec q + \vec G``, where ``\vec G`` is a generic reciprocal lattice vector.
+
+"""
+function impose_hermitianity_q!(matrix_q :: AbstractArray{Complex{T}, 3}, minus_q_index :: AbstractVector{Int}; buffer=default_buffer()) where T
+    n_q = size(matrix_q, 3)
+    n_modes = size(matrix_q, 1)
+    @no_escape buffer begin
+        target_q = @alloc(Complex{T}, size(matrix_q)...)
+
+        # Apply the hermitianity
+        for iq in 1:n_q
+            for h in 1:n_modes
+                for k in 1:n_modes
+                    target_q[k,h, iq] = matrix_q[k, h, iq]
+                    target_q[k,h, iq] += matrix_q[h, k, minus_q_index[iq]]
+                end
+            end
+        end
+        target_q ./= T(2)
+
+
+        # Apply the time-reversal symmetry
+        matrix_q .= target_q
+        for iq in 1:n_q
+            @views target_q[:, :, iq] .+= conj.(matrix_q[:, :, minus_q_index[iq]]')
+        end
+        target_q ./= T(2)
+        matrix_q .= target_q
+    end
+end
 
 @doc raw"""
     get_R_lat!(R_lat :: Matrix{T}, primitive_coords :: Matrix{T}, supercell_coords :: Matrix{T})
