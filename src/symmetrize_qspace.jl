@@ -306,7 +306,7 @@ function get_minus_q!(minus_q_index :: AbstractVector{Int}, q_points :: Abstract
         nothing
     end
 end
-function get_minus_q!(minus_q_indes :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, cell :: AbstractMatrix{T}, reciprocal_vectors :: AbstractMatrix{T}; buffer=default_buffer()) where T
+function get_minus_q!(minus_q_indes :: AbstractVector{Int}, q_points :: AbstractMatrix{T}, cell :: AbstractMatrix{T}, reciprocal_lattice :: AbstractMatrix{T}; buffer=default_buffer()) where T
     n_q = size(q_points, 2)
     n_dims = size(q_points, 1)
     @no_escape buffer begin
