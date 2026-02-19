@@ -178,6 +178,11 @@ before applying the symmetries, and then convert the symmetrized result back in 
 They are the most used subroutines to perform symmetrization in q-space,
 the equivalent of `symmetrize_vector!` and `symmetrize_fc!` for real space.
 
+The Hermitianity is not automatically imposed by the symmetrization procedure.
+This allows to symmetrize matrices that are not necessarily hermitian, for example, the cross correlation matrices between different quantities.
+Hermitianity and time-reversal symmetry can be imposed with the subroutine `impose_hermitianity_q!`, which enforces the condition.
+The time-reversal symmetry corresponds to the condition that the original matrix in real space is real-valued.
+
 
 Here the complete API
 
@@ -186,6 +191,7 @@ symmetrize_vector_q!
 symmetrize_matrix_q!
 symmetrize_vector_cartesian_q!
 symmetrize_matrix_cartesian_q!
+impose_hermitianity_q!
 ```
 
 
