@@ -12,6 +12,15 @@ This structure contains the information to perform the symmetrization of a dynam
 **Note that the `q_points` needs to be in crystal coordinates**,
 
 and the symmetries must be of the primitive cell.
+
+
+## Parameters
+
+- `symmetries` : The symmetries of the primitive cell (Symmetries{T})
+- `q_points` : The q points where the symmetries must be applied (in crystal coordinates)
+- `irt_q` : A vector (one for each symmetry) of the correspondances of q points. For each symmetry can be obtained from `get_irt_q!`
+    Q points linked in this way are related by the symmetry operation in reciprocal space, and belong to the same star of q.
+- `minus_q_index` : A vector containing for each `q` the corresponding ``\vec {q'} = -\vec q + \vec G``, where ``\vec G`` is a generic reciprocal lattice vector.
 """
 struct SymmetriesQSpace{T} <: GenericSymmetries 
     symmetries :: Symmetries{T}
@@ -684,4 +693,45 @@ function get_supercell(q_points :: AbstractMatrix{T}, args...; kwargs...) :: Vec
 end
 
 
+@doc raw"""
+    get_star_q(q_symmetries :: SymmetriesQSpace{T}) :: Vector{Int}
+
+Returns the index of the irreducible q-points from the provided symmetries in q space.
+
+## Parameters
+
+- `q_symmetries` : The symmetries in q space
+
+## Returns
+
+A vector containing the indices of the irreducible q-points.
+"""
+function get_irreducible_q_indices(q_symmetries) :: Vector{Int}
+    n_q = size(q_symmetries.q_points, 2)
+    n_syms = length(q_symmetries)
+
+    irreducible = Vector{Int}()
+    push!(irreducible, 1)  # The first q point is always irreducible
+
+    for iq in 2:n_q
+        is_irreducible = true
+        for isym in 1:n_syms
+            q_map = q_symmetries.irt_q[isym][iq]
+            if q_map < iq
+                is_irreducible = false
+            end
+            #
+            # Check if it is irreducible due to time-reversal symmetry
+            if q_symmetries.minus_q_index[q_map] < iq
+                is_irreducible = false
+            end
+        end
+
+        if is_irreducible
+            push!(irreducible, iq)
+        end
+    end
+
+    irreducible
+end
 
