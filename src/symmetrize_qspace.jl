@@ -48,6 +48,7 @@ function SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatri
     SymmetriesQSpace(symmetries, my_q_points, irt_q, minus_q_index)
 end
 
+get_dimensions(x ::SymmetriesQSpace) = get_dimensions(x.symmetries)
 Base.isempty(x :: SymmetriesQSpace) = isempty(x.symmetries)
 Base.length(x :: SymmetriesQSpace) = length(x.symmetries)
 function Base.getindex(x :: SymmetriesQSpace, k) 

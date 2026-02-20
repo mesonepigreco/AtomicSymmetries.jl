@@ -28,10 +28,16 @@ include("test_r3m.jl")
 end
 
 include("test_filter.jl")
-@testset "Filter" begin 
+@testset "Filter" begin
     test_filter()
     test_filter_full_vector()
     test_filter_fourier()
+end
+
+include("test_coset_decomposition.jl")
+@testset "Coset decomposition" begin
+    test_coset_decomposition()
+    test_coset_decomposition_qspace()
 end
 
 @testset "Cart to Crystal" begin
