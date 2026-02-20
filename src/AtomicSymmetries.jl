@@ -51,7 +51,8 @@ export get_symmetry_group_from_spglib,
        get_irreducible_q_indices,
        get_R_lat!, get_supercell, get_supercell!,
        get_reciprocal_lattice!, cryst_cart_conv!,
-       shift_position_origin!
+       shift_position_origin!,
+       CosetSymmetryGroup
 
 
 
