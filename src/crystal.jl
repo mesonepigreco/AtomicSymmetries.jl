@@ -174,6 +174,9 @@ end
 In-place conversion of coordinates between crystallographic and Cartesian systems,
 supporting both real and reciprocal (q) space.
 
+This function supports multiple targets and sources to be converted at once (like many atoms or q-points)
+by passing them as array of shape `(n_dims, n_atoms)` or `(n_dims, n_q)`
+
 The function performs one of four transformations based on the boolean flags
 `cryst_to_cart` and `q_space`. It computes `target = α * T * source`, where
 `T` is the transformation matrix and `α` is a scaling factor.
