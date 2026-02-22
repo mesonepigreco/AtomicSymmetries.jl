@@ -146,8 +146,11 @@ S[\tilde\Phi_{ab}(\bm q)] = S^\dagger \tilde\Phi_{s(a)s(b)}(S_\text{recip}\bm q)
 
 Note that the ``S_\text{recip}q`` vector in the phase factor and in the dynamical matrix can be always folded back into the first Brilluin zone. In fact the dynamical matrix is periodic in the reciprocal vector, while the phase factor is multiplied by a direct lattice vector. Thus, by adding a reciprocal lattice vector ``\bm G`` to ``S_\text{recip}\bm q``, the phase factor is multiplied by ``e^{2\pi i \bm G\cdot ( \bm t_{s,a} - \bm t_{s,b})}``, which is always equal to 1.
 
+The application of symmetries is handled by the general function `rotate_vector!` and `rotate_dynamical_matrix!` or `rotate_matrix!` that works exactly like for real space symmetries, with the same general interface. However, we also provide specific q-space only functions. Note that, while the `rotate_*` functions works in cartesian space, the following one expects symmetries in real space.
+
 This transformation for each q point is operated by the subroutine `apply_symmetry_matrixq!`. Both these function modify in-place the first argument, storing the result of the transformation there. 
 Note that, since symmetries are stored in crystalline components, both the vector and the matrix must be in crystalline components. This makes it also important that the ``\bm q`` points are provided in crystalline coordinates, to correctly compute the phase factor and the transformed ``S\bm q``.
+
 
 ```@docs
 SymmetriesQSpace
