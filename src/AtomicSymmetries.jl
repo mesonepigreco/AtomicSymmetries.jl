@@ -19,6 +19,7 @@ include("filter_symmetries.jl")
 include("crystal.jl")
 include("sparsify.jl")
 include("fourier_transform.jl")
+include("apply_symmetry_general_interface.jl")
 
 export get_symmetry_group_from_spglib,
        get_nsymmetries,
@@ -47,6 +48,9 @@ export get_symmetry_group_from_spglib,
        symmetrize_vector_cartesian_q!,
        symmetrize_matrix_cartesian_q!,
        impose_hermitianity_q!,
+       rotate_vector!,
+       rotate_matrix!,
+       rotate_dynamical_matrix!,
        get_minus_q!,
        get_irreducible_q_indices,
        get_R_lat!, get_supercell, get_supercell!,

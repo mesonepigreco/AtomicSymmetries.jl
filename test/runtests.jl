@@ -88,3 +88,12 @@ end
     include("test_fractional_symmetries.jl")
     test_fractional_symmetries_qspace()
 end
+
+include("test_general_interface.jl")
+@testset "General interface" begin
+    test_rotate_vector_real()
+    test_rotate_matrix_real()
+    test_rotate_dynamical_matrix_real()
+    test_rotate_vector_qspace()
+    test_rotate_dynamical_matrix_qspace()
+end

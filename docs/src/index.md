@@ -50,6 +50,16 @@ symmetry_group.symmetrize_centroid!(vector)
 symmetry_group.symmetrize_fc!(matrix)
 ```
 
+### Apply the symmetry operations
+
+To apply a symmetry operation in general on a vector, we provide a general interface working both in real space and q-space. These subroutines works in cartesian coordinates:
+
+```@docs
+rotate_vector!
+rotate_matrix!
+rotate_dynamical_matrix!
+```
+
 ### Build your own symmetry group (API)
 
 To build a custom symmetry group, you can exploit the following subroutines
