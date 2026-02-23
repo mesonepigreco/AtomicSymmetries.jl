@@ -96,4 +96,6 @@ include("test_general_interface.jl")
     test_rotate_dynamical_matrix_real()
     test_rotate_vector_qspace()
     test_rotate_dynamical_matrix_qspace()
+    test_rotate_centroid_real()
+    test_rotate_centroid_identity()
 end

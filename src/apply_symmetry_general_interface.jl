@@ -176,7 +176,7 @@ avg ./= n_sym  # symmetrized stress tensor
 
 ## See also
 
-- [`rotate_dynamical_matrix!`](@ref) — for extensive ``n_\text{modes} \times n_\text{modes}`` matrices with atom-block structure
+- [`rotate_dynamical_matrix!`](@ref) — for extensive ``n_\text{modes} \times n_\text{modes`` matrices with atom-block structure
 - [`symmetrize_fc!`](@ref) — symmetrize a force constant matrix in real space (Cartesian)
 """
 function rotate_matrix!(new_matrix :: AbstractMatrix{T}, old_matrix :: AbstractMatrix{T}, cell :: Matrix{T},
@@ -328,6 +328,187 @@ function rotate_dynamical_matrix!(new_matrix :: AbstractArray{Complex{T}, 3}, ol
         # Convert crystal -> Cartesian
         tmp_matrix .= new_matrix
         cart_cryst_matrix_conversion!(new_matrix, tmp_matrix, cell; cart_to_cryst=false, buffer=buffer)
+
+        nothing
+    end
+end
+
+
+@doc raw"""
+    rotate_centroid!(new_centroid :: AbstractVector{T}, old_centroid :: AbstractVector{T}, cell :: Matrix{T},
+            reciprocal_vectors :: Matrix{T},
+            symmetry_group :: Symmetries, sym_index :: Int; buffer=default_buffer()) where T
+    rotate_centroid!(new_centroid :: AbstractMatrix{Complex{T}}, old_centroid :: AbstractMatrix{Complex{T}},
+            cell :: Matrix{T}, reciprocal_vectors :: Matrix{T},
+            symmetry_group :: SymmetriesQSpace, sym_index :: Int; buffer=default_buffer()) where T
+
+Apply a **single** symmetry operation on a centroid vector (e.g. atomic positions).
+The centroid must be provided in Cartesian coordinates; the conversion to crystal
+coordinates and back is handled internally.
+
+This function works both with `SymmetriesQSpace` and with standard real-space
+`Symmetries`, thanks to multiple dispatch.
+
+**Real-space version** — the centroid has length ``n_\text{dims} \times n_\text{atoms}``
+and the operation applies the symmetry rotation plus the atom permutation,
+and includes translations if present in the symmetry group:
+
+```math
+\vec r'_{\text{irt}[a]} = S\, \vec r_{a} + \vec t
+```
+
+where ``S`` is the symmetry rotation matrix (in crystal coordinates) and ``\vec t``
+is the fractional translation associated with the symmetry operation.
+
+**Q-space version** — the centroid has size ``(n_\text{modes},\, n_q)`` and the
+operation additionally permutes q-points according to the symmetry:
+
+```math
+\vec r'_{\text{irt}[a]}(q') = S\, \vec r_{a}(q) + \vec t, \qquad q' = S^{-T} q
+```
+
+To symmetrize a centroid (average over all symmetries), call this function for
+each symmetry and average the result. That is equivalent to what
+`symmetrize_positions!` (real space) does internally.
+
+## Parameters
+
+- `new_centroid` : Output rotated centroid (modified in-place)
+- `old_centroid` : Input centroid to be rotated
+- `cell` : Primitive cell matrix (lattice vectors as columns)
+- `reciprocal_vectors` : Reciprocal lattice vectors (column-wise)
+- `symmetry_group` : The symmetry group (`Symmetries` or `SymmetriesQSpace`)
+- `sym_index` : Index of the symmetry operation to apply (``1 \le \text{sym\_index} \le N_\text{sym}``)
+- `buffer` : Optional Bumper.jl buffer for stack allocations
+
+## Example
+
+```julia
+n_sym = get_nsymmetries(sym_group)
+avg = zeros(length(centroid))
+rotated = zeros(length(centroid))
+for i in 1:n_sym
+    rotated .= 0
+    rotate_centroid!(rotated, centroid, cell, reciprocal_vectors, sym_group, i)
+    avg .+= rotated
+end
+avg ./= n_sym  # same as symmetrize_positions!(centroid, cell, sym_group)
+```
+
+## See also
+
+- [`symmetrize_positions!`](@ref) — symmetrize atomic positions in real space (Cartesian)
+- [`rotate_vector!`](@ref) — for translation-invariant vectors (forces, displacements)
+"""
+function rotate_centroid!(new_centroid :: AbstractVector{T}, old_centroid :: AbstractVector{T}, cell :: Matrix{T},
+        reciprocal_vectors :: Matrix{T}, symmetry_group :: Symmetries, sym_index :: Int; buffer=default_buffer()) where T
+
+    # Get the dimensions
+    n_dims = get_dimensions(symmetry_group)
+    n_modes = length(new_centroid)
+    n_atoms = n_modes ÷ n_dims
+    new_centroid .= zero(T)
+
+    # Get translation if available
+    translation = nothing
+    if sym_index <= length(symmetry_group.translations)
+        translation = symmetry_group.translations[sym_index]
+    end
+
+    @no_escape buffer begin
+        tmp_centroid = @alloc(T, n_modes)
+        transformed_centroid = @alloc(T, n_modes)
+        transformed_centroid .= zero(T)  # Initialize to zero
+
+        # Convert to crystal coordinates
+        get_crystal_coords!(reshape(tmp_centroid, n_dims, :),
+                           reshape(old_centroid, n_dims, :),
+                           cell; buffer=buffer)
+
+        # Apply the symmetry with translation
+        apply_sym_centroid!(transformed_centroid, tmp_centroid, 
+                           symmetry_group.symmetries[sym_index], 
+                           n_dims, 
+                           symmetry_group.irt[sym_index];
+                           translation=translation,
+                           buffer=buffer)
+        
+        # Now we need to wrap the transformed coordinates appropriately
+        # The transformed_centroid contains S·x + t for each atom
+        # But we need to wrap these to be consistent with symmetrize_positions!
+        # which computes: δ = (S·x + t - x) wrapped to [-0.5, 0.5), then x + δ
+        
+        # Create a copy of transformed coordinates to modify
+        wrapped_transformed = @alloc(T, n_modes)
+        wrapped_transformed .= transformed_centroid
+        
+        # For each atom position in the output (index j)
+        for j in 1:n_atoms
+            # Find which atom i maps to position j
+            # irt[i] = j means atom i maps to position j
+            i = findfirst(isequal(j), symmetry_group.irt[sym_index])
+            if i === nothing
+                error("Atom mapping error: no atom maps to position $j")
+            end
+            
+            orig_idx = n_dims*(i-1)+1:n_dims*i
+            trans_idx = n_dims*(j-1)+1:n_dims*j
+            
+            # For each dimension
+            for d in 1:n_dims
+                # Compute δ = transformed - original
+                delta = transformed_centroid[trans_idx[d]] - tmp_centroid[orig_idx[d]]
+                # Wrap δ to [-0.5, 0.5)
+                delta -= round(delta)
+                # Store wrapped transformed coordinate = original + δ
+                wrapped_transformed[trans_idx[d]] = tmp_centroid[orig_idx[d]] + delta
+            end
+        end
+        
+        tmp_centroid .= wrapped_transformed
+
+        # Convert back to cartesian coordinates
+        get_cartesian_coords!(reshape(new_centroid, n_dims, :),
+                             reshape(tmp_centroid, n_dims, :),
+                             cell)
+
+        nothing
+    end
+end
+function rotate_centroid!(new_centroid :: AbstractMatrix{Complex{T}}, old_centroid :: AbstractMatrix{Complex{T}},
+        cell :: Matrix{T}, reciprocal_vectors :: Matrix{T},
+        symmetry_group :: SymmetriesQSpace, sym_index :: Int; buffer=default_buffer()) where T
+
+    # Get the dimensions
+    n_q = size(new_centroid, 2)
+    n_dims = get_dimensions(symmetry_group)
+    n_modes = size(new_centroid, 1)
+    n_atoms = n_modes ÷ n_dims
+    new_centroid .= zero(Complex{T})
+
+    # For q-space, centroids are real-space quantities at each q-point
+    # We apply the real-space symmetry to each q-point slice, with q-point permutation
+    # Delegate to the real-space version for each q-point
+    
+    @no_escape buffer begin
+        # Temporary buffers for a single q-point
+        tmp_slice_old = @alloc(Complex{T}, n_modes)
+        tmp_slice_new = @alloc(Complex{T}, n_modes)
+        
+        for iq in 1:n_q
+            # Get the q-point index after symmetry permutation
+            iq_perm = symmetry_group.irt_q[sym_index][iq]
+            
+            # Extract the slice for this q-point
+            tmp_slice_old .= view(old_centroid, :, iq)
+            
+            # Apply real-space symmetry to this slice
+            rotate_centroid!(tmp_slice_new, tmp_slice_old, cell, reciprocal_vectors,
+                           symmetry_group.symmetries, sym_index; buffer=buffer)
+            
+            # Store result at permuted q-point index
+            view(new_centroid, :, iq_perm) .= tmp_slice_new
+        end
 
         nothing
     end

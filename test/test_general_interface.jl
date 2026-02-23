@@ -247,3 +247,90 @@ function test_rotate_dynamical_matrix_qspace(; verbose=false)
 
     @test isapprox(avg_matrix, ref_matrix; atol=1e-10)
 end
+
+
+function test_rotate_centroid_real(; verbose=false)
+    # Use PbTe unit cell (non-orthogonal, 2 atoms)
+    a = 12.21
+    cell = collect([-a 0.0 a; 0.0 a a; -a a 0.0]')
+    positions = collect([0.0 0.0 0.0; 0.4 0.4 0.4]')
+
+    sym_group = get_symmetry_group_from_spglib(positions, cell, [1, 2])
+    n_sym = get_nsymmetries(sym_group)
+    n_dims = 3
+    n_atoms = 2
+    n_modes = n_dims * n_atoms
+
+    reciprocal_vectors = zeros(Float64, 3, 3)
+    get_reciprocal_lattice!(reciprocal_vectors, cell)
+
+    # Create random atomic positions in Cartesian coordinates
+    # Start with crystal coordinates, then convert to Cartesian
+    crystal_coords = randn(Float64, n_dims, n_atoms)
+    # Ensure coordinates are within [0,1) for crystal coordinates
+    for i in 1:n_atoms
+        for j in 1:n_dims
+            crystal_coords[j, i] = mod(crystal_coords[j, i], 1.0)
+        end
+    end
+    
+    old_centroid = zeros(Float64, n_modes)
+    get_cartesian_coords!(reshape(old_centroid, n_dims, :), crystal_coords, cell)
+
+    # Compute rotate_centroid! average over all symmetries
+    avg_centroid = zeros(Float64, n_modes)
+    new_centroid = zeros(Float64, n_modes)
+    for i in 1:n_sym
+        new_centroid .= 0
+        rotate_centroid!(new_centroid, old_centroid, cell, reciprocal_vectors, sym_group, i)
+        avg_centroid .+= new_centroid
+    end
+    avg_centroid ./= n_sym
+
+    # Compare with symmetrize_positions!
+    ref_centroid = copy(old_centroid)
+    # symmetrize_positions! expects positions as matrix (n_dims × n_atoms)
+    ref_positions = reshape(ref_centroid, n_dims, n_atoms)
+    symmetrize_positions!(ref_positions, cell, sym_group)
+    ref_centroid = reshape(ref_positions, n_modes)
+
+    if verbose
+        println("Number of symmetries: ", n_sym)
+        println("rotate_centroid avg: ", avg_centroid)
+        println("symmetrize_positions: ", ref_centroid)
+        println("diff: ", maximum(abs.(avg_centroid - ref_centroid)))
+    end
+
+    @test isapprox(avg_centroid, ref_centroid; atol=1e-10)
+end
+
+
+function test_rotate_centroid_identity(; verbose=false)
+    # Test with identity symmetry group (no translations)
+    n_dims = 3
+    n_atoms = 2
+    n_modes = n_dims * n_atoms
+    
+    cell = [5.0 0.0 0.0; 0.0 5.0 0.0; 0.0 0.0 5.0]
+    sym_group = AtomicSymmetries.get_identity_symmetry_group(Float64; dims=n_dims, n_atoms=n_atoms, translations=false)
+    
+    reciprocal_vectors = zeros(Float64, 3, 3)
+    get_reciprocal_lattice!(reciprocal_vectors, cell)
+    
+    # Create random centroid
+    old_centroid = randn(Float64, n_modes)
+    
+    # Apply rotate_centroid! with identity symmetry (index 1)
+    new_centroid = zeros(Float64, n_modes)
+    rotate_centroid!(new_centroid, old_centroid, cell, reciprocal_vectors, sym_group, 1)
+    
+    # With identity symmetry and no translations, result should be the same as input
+    # (after coordinate conversion)
+    if verbose
+        println("Identity test - old: ", old_centroid)
+        println("Identity test - new: ", new_centroid)
+        println("diff: ", maximum(abs.(new_centroid - old_centroid)))
+    end
+    
+    @test isapprox(new_centroid, old_centroid; atol=1e-10)
+end
