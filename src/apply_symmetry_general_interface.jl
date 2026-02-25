@@ -423,9 +423,12 @@ function rotate_centroid!(new_centroid :: AbstractVector{T}, old_centroid :: Abs
                            buffer=buffer)
         
         # Apply unit cell translations to bring transformed positions into the primitive cell
+        # uct[:, i] is the lattice vector for atom i's transformation, which lands at slot irt[i]
+        irt = symmetry_group.irt[sym_index]
         for i in 1:n_atoms
-            start_index = n_dims * (i - 1) + 1
-            end_index = n_dims * i  
+            j = irt[i]
+            start_index = n_dims * (j - 1) + 1
+            end_index = n_dims * j
             @views transformed_centroid[start_index : end_index] .-= symmetry_group.unit_cell_translations[sym_index][:, i]
         end
        

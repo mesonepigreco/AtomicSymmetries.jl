@@ -328,9 +328,81 @@ function test_rotate_centroid_identity(; verbose=false)
 end
 
 
+function test_rotate_centroid_supercell(; verbose=false)
+    # PbTe 2x2x2 supercell (non-orthogonal, 16 atoms, 384 symmetries)
+    a = 12.21
+    cell_uc = collect([-a 0.0 a; 0.0 a a; -a a 0.0]')
+    crystal_uc = collect([0.0 0.0 0.0; 0.5 0.5 0.5]')
+
+    supercell = [2, 2, 2]
+    nat_uc = size(crystal_uc, 2)
+    nat_sc = prod(supercell) * nat_uc
+    n_dims = 3
+    n_modes = n_dims * nat_sc
+    types_uc = [1, 2]
+
+    # Build supercell positions in Cartesian
+    uc_cart = cell_uc * crystal_uc
+    cell = similar(cell_uc)
+    for i in 1:3, j in 1:3
+        cell[i, j] = cell_uc[i, j] * supercell[j]
+    end
+
+    positions_cart = zeros(Float64, 3, nat_sc)
+    sc_types = zeros(Int, nat_sc)
+    idx = 0
+    for ix in 0:supercell[1]-1, iy in 0:supercell[2]-1, iz in 0:supercell[3]-1
+        for k in 1:nat_uc
+            idx += 1
+            @views positions_cart[:, idx] = uc_cart[:, k] + ix*cell_uc[:, 1] + iy*cell_uc[:, 2] + iz*cell_uc[:, 3]
+            sc_types[idx] = types_uc[k]
+        end
+    end
+
+    # Convert to crystal coords and get symmetry group
+    crystal = zeros(Float64, 3, nat_sc)
+    get_crystal_coords!(crystal, positions_cart, cell)
+
+    sym_group = get_symmetry_group_from_spglib(crystal, cell, sc_types)
+    n_sym = length(sym_group)
+
+    reciprocal_vectors = zeros(Float64, 3, 3)
+    get_reciprocal_lattice!(reciprocal_vectors, cell)
+
+    # Equilibrium positions in Cartesian
+    positions = zeros(Float64, n_dims, nat_sc)
+    cryst_cart_conv!(positions, crystal, cell, reciprocal_vectors, true)
+
+    # Perturb positions slightly around equilibrium
+    old_centroid = copy(positions)
+    old_centroid .+= randn(Float64, n_dims, nat_sc) * 0.01
+
+    # Average rotate_centroid! over all symmetries
+    avg_centroid = zeros(Float64, n_modes)
+    new_centroid = zeros(Float64, n_modes)
+    for i in 1:n_sym
+        new_centroid .= 0
+        rotate_centroid!(new_centroid, reshape(old_centroid, :), cell, reciprocal_vectors, sym_group, i)
+        avg_centroid .+= new_centroid
+    end
+    avg_centroid ./= n_sym
+
+    # The average should recover the Wyckoff (equilibrium) positions
+    ref = reshape(positions, :)
+
+    if verbose
+        println("Number of symmetries: ", n_sym)
+        println("diff: ", maximum(abs.(avg_centroid - ref)))
+    end
+
+    @test isapprox(avg_centroid, ref; atol=1e-10)
+end
+
+
 if abspath(PROGRAM_FILE) == @__FILE__
     test_rotate_vector_real()
     test_rotate_matrix_real()
     test_rotate_centroid_real()
+    test_rotate_centroid_supercell()
     test_rotate_dynamical_matrix_qspace(; verbose=true)
 end
