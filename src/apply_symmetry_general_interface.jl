@@ -176,7 +176,7 @@ avg ./= n_sym  # symmetrized stress tensor
 
 ## See also
 
-- [`rotate_dynamical_matrix!`](@ref) — for extensive ``n_\text{modes} \times n_\text{modes}`` matrices with atom-block structure
+- [`rotate_dynamical_matrix!`](@ref) — for extensive ``n_\text{modes} \times n_\text{modes`` matrices with atom-block structure
 - [`symmetrize_fc!`](@ref) — symmetrize a force constant matrix in real space (Cartesian)
 """
 function rotate_matrix!(new_matrix :: AbstractMatrix{T}, old_matrix :: AbstractMatrix{T}, cell :: Matrix{T},
@@ -328,6 +328,114 @@ function rotate_dynamical_matrix!(new_matrix :: AbstractArray{Complex{T}, 3}, ol
         # Convert crystal -> Cartesian
         tmp_matrix .= new_matrix
         cart_cryst_matrix_conversion!(new_matrix, tmp_matrix, cell; cart_to_cryst=false, buffer=buffer)
+
+        nothing
+    end
+end
+
+
+@doc raw"""
+    rotate_centroid!(new_centroid :: AbstractVector{T}, old_centroid :: AbstractVector{T}, cell :: Matrix{T},
+            reciprocal_vectors :: Matrix{T},
+            symmetry_group :: Symmetries, sym_index :: Int; buffer=default_buffer()) where T
+
+Apply a **single** symmetry operation on a centroid vector (e.g. atomic positions).
+The centroid must be provided in Cartesian coordinates; the conversion to crystal
+coordinates and back is handled internally.
+
+This function works only in real-space, as in q space a centroid is, by definition, only a ``\Gamma`` vector.
+
+**Real-space version** — the centroid has length ``n_\text{dims} \times n_\text{atoms}``
+and the operation applies the symmetry rotation plus the atom permutation,
+and includes translations if present in the symmetry group:
+
+```math
+\vec r'_{\text{irt}[a]} = S\, \vec r_{a} + \vec t
+```
+
+where ``S`` is the symmetry rotation matrix (in crystal coordinates) and ``\vec t``
+is the fractional translation associated with the symmetry operation.
+
+To symmetrize a centroid (average over all symmetries), call this function for
+each symmetry and average the result. That is equivalent to what
+`symmetrize_positions!` (real space) does internally.
+
+## Parameters
+
+- `new_centroid` : Output rotated centroid (modified in-place)
+- `old_centroid` : Input centroid to be rotated
+- `cell` : Primitive cell matrix (lattice vectors as columns)
+- `reciprocal_vectors` : Reciprocal lattice vectors (column-wise)
+- `symmetry_group` : The symmetry group (`Symmetries` or `SymmetriesQSpace`)
+- `sym_index` : Index of the symmetry operation to apply (``1 \le \text{sym\_index} \le N_\text{sym}``)
+- `buffer` : Optional Bumper.jl buffer for stack allocations
+
+## Example
+
+```julia
+n_sym = get_nsymmetries(sym_group)
+avg = zeros(length(centroid))
+rotated = zeros(length(centroid))
+for i in 1:n_sym
+    rotated .= 0
+    rotate_centroid!(rotated, centroid, cell, reciprocal_vectors, sym_group, i)
+    avg .+= rotated
+end
+avg ./= n_sym  # same as symmetrize_positions!(centroid, cell, sym_group)
+```
+
+## See also
+
+- [`symmetrize_positions!`](@ref) — symmetrize atomic positions in real space (Cartesian)
+- [`rotate_vector!`](@ref) — for translation-invariant vectors (forces, displacements)
+"""
+function rotate_centroid!(new_centroid :: AbstractVector{T}, old_centroid :: AbstractVector{T}, cell :: Matrix{T},
+        reciprocal_vectors :: Matrix{T}, symmetry_group :: Symmetries, sym_index :: Int; buffer=default_buffer()) where T
+
+    # Get the dimensions
+    n_dims = get_dimensions(symmetry_group)
+    n_modes = length(new_centroid)
+    n_atoms = n_modes ÷ n_dims
+    new_centroid .= zero(T)
+
+    # Get translation if available
+    translation = nothing
+    if sym_index <= length(symmetry_group.translations)
+        translation = symmetry_group.translations[sym_index]
+    end
+
+    @no_escape buffer begin
+        tmp_centroid = @alloc(T, n_modes)
+        transformed_centroid = @alloc(T, n_modes)
+        transformed_centroid .= zero(T)  # Initialize to zero
+
+        # Convert to crystal coordinates
+        get_crystal_coords!(reshape(tmp_centroid, n_dims, :),
+                           reshape(old_centroid, n_dims, :),
+                           cell; buffer=buffer)
+
+        # Apply the symmetry with translation
+        apply_sym_centroid!(transformed_centroid, tmp_centroid, 
+                           symmetry_group.symmetries[sym_index], 
+                           n_dims, 
+                           symmetry_group.irt[sym_index];
+                           translation=translation,
+                           buffer=buffer)
+        
+        # Apply unit cell translations to bring transformed positions into the primitive cell
+        # uct[:, i] is the lattice vector for atom i's transformation, which lands at slot irt[i]
+        irt = symmetry_group.irt[sym_index]
+        for i in 1:n_atoms
+            j = irt[i]
+            start_index = n_dims * (j - 1) + 1
+            end_index = n_dims * j
+            @views transformed_centroid[start_index : end_index] .-= symmetry_group.unit_cell_translations[sym_index][:, i]
+        end
+       
+        # Convert back to cartesian coordinates
+        get_cartesian_coords!(reshape(new_centroid, n_dims, :),
+                             reshape(transformed_centroid, n_dims, :),
+                             cell)
 
         nothing
     end
