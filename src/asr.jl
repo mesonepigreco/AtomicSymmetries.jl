@@ -1,5 +1,7 @@
+abstract type ASRRule <: Function end
+
 @doc raw"""
-ASRconstraint!
+ASRConstraint!
 
 Apply the ASR constraint to a rank-`rank` tensor of dimension `dimension`.
 The application works as 
@@ -12,7 +14,7 @@ my_asr!(my_tensor)
 
 This will apply the ASR constraint to the tensor `my_tensor` in place.
 """
-struct ASRConstraint!
+struct ASRConstraint! <: ASRRule
     dimension::Int
 end
 function (asr::ASRConstraint!)(vector::AbstractVector{T}) where T
@@ -27,7 +29,10 @@ function (asr::ASRConstraint!)(vector::AbstractVector{T}) where T
 
     # Apply the ASR constraint
     for i in 1:nat
-        @views mytensor[:, i] .-= marginal
+        @simd for k in 1:dimension
+            index = dimension*(i-1) + k
+            vector[index] -= marginal[k]
+        end
     end
 end
 
@@ -37,17 +42,20 @@ end
 Apply the ASR constraint to a rank-2 tensor of dimension `asr.dimension`.
 
 The ASR is applied using the following formula to the $\Phi$ matrix:
-$$
+
+```math
 \Phi' = (I - \sum_t \left| t\right>\left< t\right|) \Phi(I - \sum_t \left| t\right>\left< t\right|)
-$$
+```
+
 where $\left |t\right>$ is the $t$-th global translation vector (1 for each dimension). 
 
 The implementation follows the equation
-$$
+
+```math
 \Phi_{ij}^{\alpha\beta}' = \Phi_{ij}^{\alpha\beta} - \frac{1}{N_{\text{at}}}\sum_{tk} \Phi_{ik}^{\alpha t}\delta_{\beta t}
 - \frac{1}{N_{\text{at}}}\sum_{tk} \Phi_{kj}^{t\beta}\delta_{\alpha t}
 + \frac{1}{N_{\text{at}}^2}\sum_{t_1t_2hk} \Phi_{hk}^{t_1t_2}\delta_{\alpha t_1}\delta_{\beta t_2}
-$$
+```
 
 which ensures that the translational invariance is mathematically preserved.
 
@@ -100,5 +108,58 @@ function (asr::ASRConstraint!)(matrix :: AbstractMatrix{T}; buffer=default_buffe
     end
 end
 
+
+@doc raw"""
+    translation_mask!(mask::Vector{Bool}, pols::Matrix{T}, masses::Vector{T}, n_dims :: Int; multiply :: Bool =true; buffer=default_buffer()) where T
+
+Identifies translational modes by checking
+if the crystal's center of mass moves.
+
+The function updates the `mask` in-place, setting `mask[i] = true` for
+any mode `i` that does move the center of mass.
+
+## Arguments
+
+- `mask::Vector{Bool}`: The boolean mask to be updated in-place.
+  `mask[i]` will be set to `true` for translational modes.
+- `pols::Matrix{T}`: The matrix of **mass-weighted** polarization
+  eigenvectors, with modes as columns. Must have size
+  `(Ndims * Natoms, Nmodes)`.
+- `masses::Vector{T}`: A vector of the **atomic masses** for
+  each atom, with size `(Natoms)`.
+- `n_dims` :: Int : The number of spatial dimensions (e.g., 3 for 3D systems).
+- `multiply`: (Optional) If `true` (default), the function computes
+  `dispv` using the mass-weighted polarization vectors. If `false`,
+  it computes `dispv` using the unweighted polarization vectors.
+- `buffer`: (Optional) A `Bumper.jl` buffer for allocating
+  the temporary `dispv` vector to avoid allocations.
+"""
+function translation_mask!(mask :: AbstractVector{Bool}, pols :: AbstractMatrix{T}, masses :: Vector{U}, n_dims :: Int; multiply=true, buffer=default_buffer()) where {T, U}
+
+    mask .= true
+    nmod = length(mask)
+    n_modes = size(pols, 1)
+
+
+    @no_escape buffer begin
+        dispv = @alloc(T, n_dims)
+
+        for i in 1:nmod
+            dispv .= 0
+            for j in 1:n_modes
+                j_dim = (j-1) % n_dims + 1
+                factor = multiply ? sqrt(masses[j]) : 1/sqrt(masses[j])
+                dispv[j_dim] += pols[j, i] * factor
+            end
+
+
+            # Center of mass displacement of the mode
+            if maximum(abs, dispv) <= 1e-6
+                mask[i] = false
+            end
+        end
+        nothing
+    end
+end
 
 

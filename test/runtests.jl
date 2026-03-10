@@ -28,9 +28,16 @@ include("test_r3m.jl")
 end
 
 include("test_filter.jl")
-@testset "Filter" begin 
+@testset "Filter" begin
     test_filter()
     test_filter_full_vector()
+    test_filter_fourier()
+end
+
+include("test_coset_decomposition.jl")
+@testset "Coset decomposition" begin
+    test_coset_decomposition()
+    test_coset_decomposition_qspace()
 end
 
 @testset "Cart to Crystal" begin
@@ -65,4 +72,30 @@ end
 @testset "sparsify" begin
     include("test_sparsify.jl")
     test_symmetry_sparsification()
+end
+
+
+@testset "Fourier symmetries" begin
+    include("test_symmetrize_qspace.jl")
+    test_fourier_matrix()
+    test_symmetrize_q_space()
+
+    # A test on a complex noncubic cell
+    include("test_symmetrize_cartesian_qspace.jl")
+    test_symmetrize_cartesian_qspace()
+
+    # A test with fractional translations
+    include("test_fractional_symmetries.jl")
+    test_fractional_symmetries_qspace()
+end
+
+include("test_general_interface.jl")
+@testset "General interface" begin
+    test_rotate_vector_real()
+    test_rotate_matrix_real()
+    test_rotate_dynamical_matrix_real()
+    test_rotate_vector_qspace()
+    test_rotate_dynamical_matrix_qspace()
+    test_rotate_centroid_real()
+    test_rotate_centroid_identity()
 end

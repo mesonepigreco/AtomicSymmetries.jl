@@ -76,6 +76,8 @@ end
 
 @doc """
     cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: AbstractMatrix{T}, cell :: AbstractMatrix{T}; cart_to_cryst :: Bool = true, buffer=default_buffer()) where T
+    cart_cryst_matrix_conversion!(dest :: AbstractArray{Complex{T}, 3}, matrix :: AbstractArray{Complex{T}, 3}, cell :: AbstractMatrix{T}; cart_to_cryst = true, buffer=default_buffer()) where T
+
 
 Convert a matrix `matrix` from cartesian to crystal coordinates.
 The result are stored in `dest`.
@@ -86,8 +88,11 @@ Otherwise, the conversion is from crystal to cartesian coordinates.
 
 This function exploits Bumper stack memory allocations. 
 It is possible to pass the stack as an argument with the buffer keyword
+
+It works either with supercell real force constant matrices, and with force constant matrices directly written in q space.
+In the latter case, the dimension of the matrix is expected to be (n_modes, n_modes, nq)
 """
-function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: AbstractMatrix{T}, cell :: AbstractMatrix{T}; cart_to_cryst = true, buffer=default_buffer()) where T
+function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{U}, matrix :: AbstractMatrix{U}, cell :: AbstractMatrix{T}; cart_to_cryst = true, buffer=default_buffer()) where {T, U <: Union{T, Complex{T}}}
     dim = size(cell, 1)
     nmodes = size(matrix, 1)
     n_atoms = nmodes ÷ dim
@@ -98,7 +103,7 @@ function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: Abst
         metric_tensor = @alloc(T, dim, dim)
         inv_metric_tensor = @alloc(T, dim, dim)
         transform_matrix = @alloc(T, dim, dim)
-        tmp_matrix = @alloc(T, dim, dim)
+        tmp_matrix = @alloc(U, dim, dim)
 
         mul!(metric_tensor, cell', cell)
         inv_metric_tensor .= inv(metric_tensor) #TODO: Allocating
@@ -118,4 +123,121 @@ function cart_cryst_matrix_conversion!(dest :: AbstractMatrix{T}, matrix :: Abst
         nothing
     end
 end
+function cart_cryst_matrix_conversion!(dest :: AbstractArray{Complex{T}, 3}, 
+        matrix :: AbstractArray{Complex{T}, 3}, cell :: AbstractMatrix{T}; cart_to_cryst = true, buffer=default_buffer()) where T
+    nq = size(dest, 3)
+    @assert nq == size(matrix, 3)
 
+    for iq in 1:nq
+        @views cart_cryst_matrix_conversion!(dest[:, :, iq], matrix[:, :, iq], cell; 
+                                             cart_to_cryst = cart_to_cryst, buffer=buffer)
+    end
+end
+
+
+@doc raw"""
+    get_reciprocal_lattice!(reciprocal_vectors :: Matrix{T}, cell :: Matrix{T})
+
+Compute the reciprocal lattice vectors from the primitive cell.
+
+Reciprocal lattice vectors ``\boldsymbol{B}`` (columns of the matrix)
+satisfy the property
+
+```math
+\boldsymbol{B}^\dagger \boldsymbol{A} = 2\pi \boldsymbol{I}
+```
+
+where ``\boldsymbol{A}`` is the matrix whose columns are the direct lattice
+vectors, and ``\boldsymbol{I}`` is the identity matrix.
+
+
+## Parameters
+
+- `reciprocal_vectors` : The ``\boldsymbol{B}`` matrix, whose columns are
+    the reciprocal lattice vectors (modified in-place).
+- `cell` : The matrix whose columns are the primitive direct lattice vectors.
+"""
+function get_reciprocal_lattice!(reciprocal_vectors :: Matrix{T}, cell :: Matrix{T}) where T
+    n_dims = size(cell, 1)
+    tmp_cell_t = SMatrix{n_dims, n_dims}(cell')
+    reciprocal_vectors .= inv(tmp_cell_t)
+    reciprocal_vectors .*= (2π)
+end
+
+
+
+
+
+@doc raw"""
+    cryst_cart_conv!(target, source, primitive_cell, reciprocal_vectors, cryst_to_cart; q_space=false)
+
+In-place conversion of coordinates between crystallographic and Cartesian systems,
+supporting both real and reciprocal (q) space.
+
+This function supports multiple targets and sources to be converted at once (like many atoms or q-points)
+by passing them as array of shape `(n_dims, n_atoms)` or `(n_dims, n_q)`
+
+The function performs one of four transformations based on the boolean flags
+`cryst_to_cart` and `q_space`. It computes `target = α * T * source`, where
+`T` is the transformation matrix and `α` is a scaling factor.
+
+# Arguments
+- `target::AbstractArray{T}`: The destination array, which is modified in-place.
+- `source::AbstractArray{T}`: The source array containing the coordinates to be transformed.
+- `primitive_cell::AbstractMatrix{U}`: The matrix whose columns represent the
+  primitive lattice vectors (e.g., $A = [a₁, a₂, a₃]$).
+- `reciprocal_vectors::AbstractMatrix{U}`: The matrix whose columns represent the
+  reciprocal lattice vectors (e.g., $B = [b₁, b₂, b₃]$).
+- `cryst_to_cart::Bool`: The direction of the transformation.
+  - `true`: Crystallographic coordinates (unitless) to Cartesian (units of length or 1/length).
+  - `false`: Cartesian to Crystallographic.
+
+# Keyword Arguments
+- `q_space::Bool = false`: Toggles between real space and reciprocal (q) space.
+  - `false`: Real-space transformation.
+  - `true`: Reciprocal-space (q-space) transformation.
+
+# Operations Performed
+
+Let `A = primitive_cell` and `B = reciprocal_vectors`. The function assumes the
+standard physics definition where ``A^T B = 2\pi I``.
+
+
+
+The function calculates `target = α * T * source` based on the following cases:
+
+1.  **`cryst_to_cart=true`, `q_space=false`**: (Cryst → Cart, Real Space)
+    - `T = A`
+    - `α = 1.0`
+    - `target = A * source`
+
+2.  **`cryst_to_cart=true`, `q_space=true`**: (Cryst → Cart, Q-Space)
+    - `T = B`
+    - `α = 1.0`
+    - `target = B * source`
+
+3.  **`cryst_to_cart=false`, `q_space=false`**: (Cart → Cryst, Real Space)
+    - `T = B'` (Transpose of `reciprocal_vectors`)
+    - `α = 1.0`
+    - `target = B' * source`
+4.  **`cryst_to_cart=false`, `q_space=true`**: (Cart → Cryst, Q-Space)
+    - `T = A'` (Transpose of `primitive_cell`)
+    - `α = 1 / (2π)`
+    - `target = (1 / (2π)) * A' * source` (This is correct, as ``B^{-1} = \frac{1}{2\pi} A^T``)
+"""
+function cryst_cart_conv!(target :: AbstractArray{T}, source :: AbstractArray{T},
+        primitive_cell :: AbstractMatrix{U},
+        reciprocal_vectors :: AbstractMatrix{U},
+        cryst_to_cart :: Bool;
+        q_space :: Bool = false) where {T, U}
+
+    if cryst_to_cart && q_space
+        mul!(target, reciprocal_vectors, source, U(1/(2π)), zero(U))
+    elseif !cryst_to_cart && !q_space
+        mul!(target, reciprocal_vectors', source, U(1/(2π)), zero(U))
+    elseif !cryst_to_cart && q_space
+        mul!(target, primitive_cell', source)
+    else
+        mul!(target, primitive_cell, source)
+    end
+end
