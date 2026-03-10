@@ -23,6 +23,14 @@ function get_gold_unit_cell()
     return (position, cell', types)
 end
 
+function get_zincblende()
+    a = 5.65
+    cell = (a/2) * [0.0 1.0 1.0; 1.0 0.0 1.0; 1.0 1.0 0.0]'
+    positions = [0.0 0.25; 0.0 0.25; 0.0 0.25]
+    types = [1, 2]
+    return (positions, cell, types)
+end
+
 function get_pm3m_supercell(; supercell=[2, 2, 2])
     uc_positions, cell, types = get_pm3m_perovskite()
     get_supercell(uc_positions, cell, types, supercell)

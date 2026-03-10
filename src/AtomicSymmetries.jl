@@ -14,6 +14,7 @@ include("symmetrize_qspace.jl")
 
 include("spglib_init.jl")
 include("generators.jl")
+include("efficient_generators.jl")
 include("asr.jl")
 include("filter_symmetries.jl")
 include("crystal.jl")
@@ -57,7 +58,15 @@ export get_symmetry_group_from_spglib,
        get_R_lat!, get_supercell, get_supercell!,
        get_reciprocal_lattice!, cryst_cart_conv!,
        shift_position_origin!,
-       CosetSymmetryGroup
+       CosetSymmetryGroup,
+       Generator,
+       get_tensor_generators,
+       symmetrize_tensor!,
+       apply_symmetry_tensor!,
+       reconstruct_tensor!,
+       get_coefficients_from_tensor!,
+       contract_generator_vector!,
+       contract_generator_matrix!
 
 
 

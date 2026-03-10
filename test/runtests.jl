@@ -99,3 +99,13 @@ include("test_general_interface.jl")
     test_rotate_centroid_real()
     test_rotate_centroid_identity()
 end
+
+include("test_efficient_generators.jl")
+@testset "Efficient generators" begin
+    test_index_helpers()
+    test_apply_symmetry_tensor()
+    test_rank2_consistency()
+    test_rank3_generators()
+    test_contraction()
+    test_compact_reconstruction()
+end
