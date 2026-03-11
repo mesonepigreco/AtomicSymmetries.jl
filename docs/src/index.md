@@ -112,74 +112,11 @@ get_translations
 apply_translations!
 ```
 
-## The symmetry generators
+## Symmetry generators
 
-From the symmetry group, we can obtain a vectorial subspace that is invariant under the symmetry operations.
-A basis of this subspace is given by the symmetry generators.
-For vectorial quantities, the generators can be obtained as
+From the symmetry group, one can construct the invariant subspace of rank-``k`` tensors and find its basis — the **symmetry generators**. Any symmetry-respecting tensor can be written as a linear combination of its generators.
 
-```julia
-generators = get_vector_generators(symmetry_group)
-```
-
-For 2-rank tensors, the generators can be obtained as
-
-```julia
-generators = get_matrix_generators(symmetry_group)
-```
-
-The generators are vectors of indexes that can be used to build the symmetry independent components of a tensor.
-This allows to store each generator as a 64-bit integer, which is more memory efficient than storing the full tensor.
-The full vector/2-rank tensor can be retriven with the function ``get_vector_generator!``/``get_matrix_generator!``.
-
-```julia
-# Retrive the first element from the generators
-i = 1
-vector = zeros(3)
-get_vector_generator!(vector, generators[i], symmetry_group)
-```
-And analogously for 2-rank tensors.
-
-
-The generators can be used to project any vector or 2-rank tensor in the symmetry invariant subspace.
-
-```julia
-coefficients = zeros(length(generators))
-my_vector = ...
-get_coefficients_from_vector!(coefficients, my_vector, generators, symmetry_group)
-```
-
-The previous function projects the vector `my_vector` in the symmetry invariant subspace and stores the coefficients in the vector `coefficient`.
-The coefficients can be used to reconstruct the original vector (symmetrized) as
-
-```julia
-final_vector = similar(my_vector)
-get_centroids_from_generators!(final_vector, generators, coefficients, symmetry_group)
-```
-
-The same works for 2-rank tensors.
-```julia
-# Get the coefficients of the matrix projected in the symmetric subspace
-coefficients = zeros(length(generators))
-my_matrix = ...
-get_coefficients_from_fc!(coefficients, my_matrix, generators, symmetry_group)
-
-# And reconstruct bach the matrix from the coefficients
-final_matrix = similar(my_matrix)
-get_fc_from_generators!(final_matrix, generators, coefficients, symmetry_group)
-```
-
-### Generators (API)
-
-```@docs
-AtomicSymmetries.get_vector_generators
-AtomicSymmetries.get_matrix_generators
-AtomicSymmetries.get_vector_generator!
-AtomicSymmetries.get_coefficients_from_vector!
-AtomicSymmetries.get_centroids_from_generators!
-AtomicSymmetries.get_coefficients_from_fc!
-AtomicSymmetries.get_fc_from_generators!
-```
+See the [Symmetry Generators](@ref) page for the full mathematical background, usage guide, and API reference for both rank-1/2 and arbitrary-rank generators.
 
 
 ## Spglib integration
