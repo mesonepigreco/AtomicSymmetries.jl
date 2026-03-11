@@ -101,6 +101,7 @@ include("test_general_interface.jl")
 end
 
 include("test_efficient_generators.jl")
+include("test_fcc_supercell_generators.jl")
 @testset "Efficient generators" begin
     test_index_helpers()
     test_apply_symmetry_tensor()
@@ -108,4 +109,6 @@ include("test_efficient_generators.jl")
     test_rank3_generators()
     test_contraction()
     test_compact_reconstruction()
+    test_fast_vs_standard_generators()
+    test_fcc_444_rotated_generators()
 end

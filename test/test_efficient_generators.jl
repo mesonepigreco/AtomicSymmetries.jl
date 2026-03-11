@@ -280,6 +280,54 @@ function test_index_helpers()
 end
 
 
+"""
+Test that get_tensor_generators_fast produces the same results as
+get_tensor_generators on a non-orthogonal cell (PbTe unit cell).
+
+Both methods must yield the same number of generators, and
+projecting a random matrix onto the fast generators and reconstructing
+must match direct symmetrization via symmetrize_fc!.
+"""
+function test_fast_vs_standard_generators()
+    # PbTe unit cell (non-orthogonal cell, 2 atoms)
+    a = 12.21
+    cell = [-a 0.0 a; 0.0 a a; -a a 0.0]'
+    positions = [0.0 0.0 0.0; 0.5 0.5 0.5]'
+    atomic_numbers = [1, 2]
+
+    symmetry_group = get_symmetry_group_from_spglib(positions, cell, atomic_numbers)
+    dim = AtomicSymmetries.get_dimensions(symmetry_group)
+    nat = AtomicSymmetries.get_n_atoms(symmetry_group)
+    n_modes = dim * nat
+
+    # Standard method (known correct)
+    generators_std = get_tensor_generators(symmetry_group, cell; rank=2)
+
+    # Fast method (orbit decomposition)
+    generators_fast = get_tensor_generators_fast(symmetry_group, cell; rank=2)
+
+    # Same number of generators
+    @test length(generators_std) == length(generators_fast)
+
+    # Random symmetric matrix
+    fc = randn(n_modes, n_modes)
+    fc = (fc + fc') / 2
+
+    # Direct symmetrization (ground truth)
+    fc_sym = copy(fc)
+    symmetrize_fc!(fc_sym, cell, symmetry_group)
+
+    # Project onto fast generators and reconstruct
+    coeffs_fast = zeros(length(generators_fast))
+    get_coefficients_from_tensor!(coeffs_fast, fc, generators_fast, cell)
+    fc_fast = zeros(n_modes, n_modes)
+    reconstruct_tensor!(fc_fast, generators_fast, coeffs_fast, cell)
+
+    # Must match direct symmetrization
+    @test fc_fast ≈ fc_sym atol = 1e-8
+end
+
+
 if abspath(PROGRAM_FILE) == @__FILE__
     include("define_cell.jl")
     test_index_helpers()
@@ -294,5 +342,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     println("Contraction passed")
     test_compact_reconstruction()
     println("Compact reconstruction passed")
+    test_fast_vs_standard_generators()
+    println("Fast vs standard generators passed")
     println("All efficient generator tests passed!")
 end
