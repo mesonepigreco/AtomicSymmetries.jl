@@ -252,6 +252,57 @@ function get_atom_orbit_representatives(sym_group::Symmetries)
 end
 
 @doc raw"""
+    _kron_power(S, k)
+
+Compute the k-fold Kronecker product S ⊗ S ⊗ ... ⊗ S.
+For dim=3, rank=4 this produces an 81×81 matrix.
+"""
+function _kron_power(S::AbstractMatrix{T}, k::Int) where T
+    result = S
+    for _ in 2:k
+        result = kron(result, S)
+    end
+    return result
+end
+
+@doc raw"""
+    _build_perm_map(sigma, dim, rank)
+
+Build a linear-index permutation map for a Cartesian block permutation.
+`sigma` specifies that `result[c₁,...,cₖ] = block[c_{σ(1)},...,c_{σ(k)}]`.
+
+Returns a vector `perm_map` such that `result_flat[i] = block_flat[perm_map[i]]`.
+"""
+function _build_perm_map(sigma::AbstractVector{Int}, dim::Int, rank::Int)
+    block_shape = ntuple(_ -> dim, rank)
+    lin = LinearIndices(block_shape)
+    ci_all = CartesianIndices(block_shape)
+    perm_map = Vector{Int}(undef, dim^rank)
+    for ci in ci_all
+        t = Tuple(ci)
+        permuted = ntuple(j -> t[sigma[j]], rank)
+        perm_map[lin[ci]] = lin[permuted...]
+    end
+    return perm_map
+end
+
+@doc raw"""
+    _build_sym_lin_indices(sym_indices, dim, rank)
+
+Convert NTuple-based sym_indices to linear index vectors for fast flat-array access.
+Returns a vector of vectors of linear indices.
+"""
+function _build_sym_lin_indices(sym_indices::Vector{Vector{NTuple{N,Int}}}, dim::Int) where N
+    block_shape = ntuple(_ -> dim, N)
+    lin = LinearIndices(block_shape)
+    sym_lin = Vector{Vector{Int}}(undef, length(sym_indices))
+    for i in eachindex(sym_indices)
+        sym_lin[i] = [lin[idx...] for idx in sym_indices[i]]
+    end
+    return sym_lin
+end
+
+@doc raw"""
     _apply_rotation_to_block!(result, block, S)
 
 In-place application of rotation $S$ to all indices of the Cartesian block.
@@ -261,11 +312,11 @@ $result_{c_1 \dots c_k} = \sum_{d_1 \dots d_k} S_{d_1 c_1} \dots S_{d_k c_k} blo
 For rank 2 this gives $\text{result} = S^T \cdot \text{block} \cdot S$.
 """
 function _apply_rotation_to_block!(result::AbstractArray{T,rank}, block::AbstractArray{T,rank},
-    S::AbstractMatrix{T}) where {T,rank}
+    S::AbstractMatrix{T}, tmp::AbstractArray{T,rank}, current::AbstractArray{T,rank}) where {T,rank}
     dim = size(S, 1)
-    # Temporary buffer for contraction chain
-    tmp = copy(block)
-    current = copy(block)
+    # Use pre-allocated workspace buffers instead of allocating new ones
+    tmp .= block
+    current .= block
 
     for d in 1:rank
         # Contract dimension d with S
@@ -287,12 +338,15 @@ This matches the 2-argument `_contract_rotation_dim!` used by `apply_symmetry_te
 """
 function _contract_rotation_dim!(dest, src, S, which_dim, dim, rank)
     cart_idx = ones(Int, rank)
+    src_idx = zeros(Int, rank)
     total = dim^rank
     for _ in 1:total
         val = zero(eltype(dest))
         for alpha in 1:dim
-            # src_idx: replace which_dim with alpha
-            src_idx = ntuple(j -> j == which_dim ? alpha : cart_idx[j], rank)
+            # Build src_idx manually: replace which_dim with alpha
+            for j in 1:rank
+                src_idx[j] = j == which_dim ? alpha : cart_idx[j]
+            end
             val += S[alpha, cart_idx[which_dim]] * src[src_idx...]
         end
         dest[cart_idx...] = val
@@ -317,10 +371,13 @@ $result_{c_1 \dots c_k} = block_{c_{\sigma(1)} \dots c_{\sigma(k)}}$.
 function _permute_block_indices!(result::AbstractArray{T,rank}, block::AbstractArray{T,rank},
     sigma::AbstractVector{Int}) where {T,rank}
     cart_idx = ones(Int, rank)
+    permuted_idx = zeros(Int, rank)
     total = size(block, 1)^rank
     for _ in 1:total
         # Permute index according to sigma
-        permuted_idx = ntuple(j -> cart_idx[sigma[j]], rank)
+        for j in 1:rank
+            permuted_idx[j] = cart_idx[sigma[j]]
+        end
         result[cart_idx...] = block[permuted_idx...]
 
         # Increment multi-index
@@ -590,11 +647,15 @@ Contract transform matrix M on dimension `which_dim`:
 function _contract_transform_dim!(block::AbstractArray{T}, M, which_dim, dim, rank) where T
     block_copy = copy(block)
     cart_idx = ones(Int, rank)
+    src_idx = zeros(Int, rank)
     total = dim^rank
     for _ in 1:total
         val = zero(T)
         for alpha in 1:dim
-            src_idx = ntuple(j -> j == which_dim ? alpha : cart_idx[j], rank)
+            # Build src_idx manually: replace which_dim with alpha
+            for j in 1:rank
+                src_idx[j] = j == which_dim ? alpha : cart_idx[j]
+            end
             val += M[alpha, cart_idx[which_dim]] * block_copy[src_idx...]
         end
         block[cart_idx...] = val
@@ -712,60 +773,99 @@ function _find_generators_for_orbit!(generators, tuple, sym_group, cell, rank, T
         return
     end
 
-    # Precompute crystal-to-Cartesian transform matrix (A^{-1})
+    block_size = dim^rank
+    block_shape = ntuple(_ -> dim, rank)
+    n_sym = get_nsymmetries(sym_group)
+
+    # Precompute crystal-to-Cartesian transform matrix and its Kronecker power
     metric_tensor = cell' * cell
     inv_metric_tensor = inv(metric_tensor)
     cryst_to_cart_M = inv_metric_tensor * cell'
+    # Transpose: convention is new[β] = Σ_α M[α,β] * old[α], so need M' in Kronecker
+    kron_M = Matrix(_kron_power(cryst_to_cart_M, rank)')
+
+    # Precompute Kronecker rotation matrices for all symmetries (transposed for S[α,β] convention)
+    kron_S_all = Vector{Matrix{T}}(undef, n_sym)
+    for s in 1:n_sym
+        kron_S_all[s] = Matrix(_kron_power(sym_group.symmetries[s], rank)')
+    end
+
+    # Precompute permutation maps and identity permutation for expansion step
+    all_perms = sorted_permutations(rank)
+    identity_perm = collect(1:rank)
+    perm_maps_expand = Dict{Vector{Int}, Vector{Int}}()
+    for perm in all_perms
+        if perm != identity_perm
+            perm_maps_expand[perm] = _build_perm_map(perm, dim, rank)
+        end
+    end
+
+    # Workspace flat vectors for orbit rotation + coordinate conversion
+    rot_flat = Vector{T}(undef, block_size)
+    perm_flat = Vector{T}(undef, block_size)
+    conv_flat = Vector{T}(undef, block_size)
+    mapped = Vector{Int}(undef, rank)
+    target_buf = Vector{Int}(undef, rank)
 
     # 3. For each basis vector, build a Generator
     for (i_gen, B_rep) in enumerate(basis)
+        B_rep_flat = vec(B_rep)
+
         # Find all tuples in the orbit and their blocks (in crystal coordinates)
         orbit_dict = Dict{Vector{Int},Array{T,rank}}()
 
-        for s in 1:get_nsymmetries(sym_group)
+        for s in 1:n_sym
             irt = sym_group.irt[s]
-            S = sym_group.symmetries[s]
 
-            # Target tuple (sorted)
-            target = [irt[tuple[j]] for j in 1:rank]
-            sort!(target)
+            # Target tuple (unsorted then sorted)
+            for j in 1:rank
+                mapped[j] = irt[tuple[j]]
+                target_buf[j] = mapped[j]
+            end
+            sort!(target_buf)
+            target = copy(target_buf)
 
             if !haskey(orbit_dict, target)
-                # Compute block: Rotate and Permute (in crystal coordinates)
-                sigma_fixed = _find_correct_permutation(target, [irt[tuple[j]] for j in 1:rank])
+                sigma_fixed = _find_correct_permutation(target, mapped)
+                pm = _build_perm_map(sigma_fixed, dim, rank)
 
-                rotated = Array{T,rank}(undef, ntuple(_ -> dim, rank))
-                _apply_rotation_to_block!(rotated, B_rep, S)
+                # Rotate: rot = kron(S,...,S) * B_rep
+                mul!(rot_flat, kron_S_all[s], B_rep_flat)
 
-                permuted = Array{T,rank}(undef, ntuple(_ -> dim, rank))
-                _permute_block_indices!(permuted, rotated, sigma_fixed)
+                # Permute: perm[i] = rot[pm[i]]
+                @inbounds for i in 1:block_size
+                    perm_flat[i] = rot_flat[pm[i]]
+                end
 
-                orbit_dict[target] = permuted
+                orbit_dict[target] = reshape(copy(perm_flat), block_shape)
             end
         end
 
-        # Convert all blocks from crystal to Cartesian coordinates
+        # Convert all blocks from crystal to Cartesian coordinates using kron_M
         for (_, block) in orbit_dict
-            for j in 1:rank
-                _contract_transform_dim!(block, cryst_to_cart_M, j, dim, rank)
-            end
+            block_flat = vec(block)
+            mul!(conv_flat, kron_M, block_flat)
+            copyto!(block_flat, conv_flat)
         end
 
         # Expand sorted tuples to include all permutations (permutation symmetry):
         # the Generator stores blocks at ALL atom tuples, not just sorted ones.
         # For unsorted tuple π(T), the block has its Cartesian indices permuted by π.
-        all_perms = sorted_permutations(rank)
         expanded = Dict{Vector{Int},Array{T,rank}}()
         for (sorted_target, block) in orbit_dict
+            block_flat = vec(block)
             for perm in all_perms
                 perm_target = [sorted_target[perm[j]] for j in 1:rank]
                 if !haskey(expanded, perm_target)
-                    if perm == collect(1:rank)
+                    if perm == identity_perm
                         expanded[perm_target] = block
                     else
-                        perm_block = Array{T,rank}(undef, ntuple(_ -> dim, rank))
-                        _permute_block_indices!(perm_block, block, perm)
-                        expanded[perm_target] = perm_block
+                        pm = perm_maps_expand[perm]
+                        perm_block_flat = Vector{T}(undef, block_size)
+                        @inbounds for i in 1:block_size
+                            perm_block_flat[i] = block_flat[pm[i]]
+                        end
+                        expanded[perm_target] = reshape(perm_block_flat, block_shape)
                     end
                 end
             end
@@ -807,35 +907,60 @@ function _get_invariant_cartesian_basis(H, tuple, sym_group, rank, T)
     dim = sym_group.dimension
     sym_indices = _get_tuple_symmetric_indices(tuple, dim)
     D_sym = length(sym_indices)
+    block_size = dim^rank
 
     P = zeros(T, D_sym, D_sym)
 
-    B_work = zeros(T, ntuple(_ -> dim, rank))
-    B_rot = zeros(T, ntuple(_ -> dim, rank))
-    B_perm = zeros(T, ntuple(_ -> dim, rank))
+    # Precompute linear indices for each symmetry group (for fast flat-array access)
+    sym_lin = _build_sym_lin_indices(sym_indices, dim)
 
-    for s_idx in H
+    # Precompute inverse sqrt of group sizes
+    inv_sqrt_len = [one(T) / sqrt(T(length(sym_indices[j]))) for j in 1:D_sym]
+
+    # Precompute Kronecker rotation matrices and permutation maps for each symmetry in H
+    mapped = Vector{Int}(undef, rank)
+    kron_perm_list = Vector{Tuple{Matrix{T}, Vector{Int}}}(undef, length(H))
+    for (k, s_idx) in enumerate(H)
         S = sym_group.symmetries[s_idx]
         irt = sym_group.irt[s_idx]
-        sigma = _find_correct_permutation(tuple, [irt[tuple[j]] for j in 1:rank])
+        for j in 1:rank
+            mapped[j] = irt[tuple[j]]
+        end
+        sigma = _find_correct_permutation(tuple, mapped)
+        # Transpose: convention is dest[β] = Σ_α S[α,β] * src[α], so need S' in Kronecker
+        kron_perm_list[k] = (Matrix(_kron_power(S, rank)'), _build_perm_map(sigma, dim, rank))
+    end
 
+    # Workspace: 3 flat vectors of length block_size, reused across iterations
+    B_work_flat = zeros(T, block_size)
+    B_rot_flat = zeros(T, block_size)
+    B_perm_flat = zeros(T, block_size)
+
+    # Hot loop: accumulate projection matrix P
+    for (kS, pm) in kron_perm_list
         for j in 1:D_sym
-            fill!(B_work, zero(T))
-            for idx in sym_indices[j]
-                B_work[idx...] = 1.0
+            # Fill B_work_flat: set entries corresponding to sym_indices[j] to normalized value
+            fill!(B_work_flat, zero(T))
+            isqrt = inv_sqrt_len[j]
+            @inbounds for lin in sym_lin[j]
+                B_work_flat[lin] = isqrt
             end
-            B_work ./= sqrt(length(sym_indices[j]))
 
-            _apply_rotation_to_block!(B_rot, B_work, S)
-            _permute_block_indices!(B_perm, B_rot, sigma)
+            # BLAS rotation: B_rot = kron(S,...,S) * B_work
+            mul!(B_rot_flat, kS, B_work_flat)
 
+            # Gather permutation: B_perm[i] = B_rot[perm_map[i]]
+            @inbounds for i in 1:block_size
+                B_perm_flat[i] = B_rot_flat[pm[i]]
+            end
+
+            # Accumulate into P matrix
             for i in 1:D_sym
                 val = zero(T)
-                for idx in sym_indices[i]
-                    val += B_perm[idx...]
+                @inbounds for lin in sym_lin[i]
+                    val += B_perm_flat[lin]
                 end
-                val /= sqrt(length(sym_indices[i]))
-                P[i, j] += val
+                P[i, j] += val * inv_sqrt_len[i]
             end
         end
     end
@@ -846,18 +971,19 @@ function _get_invariant_cartesian_basis(H, tuple, sym_group, rank, T)
         return []
     end
 
-    U, S, V = svd(P)
+    U, Svals, V = svd(P)
     basis_vectors = Vector{Array{T,rank}}()
+    block_shape = ntuple(_ -> dim, rank)
     for i in 1:D_sym
-        if S[i] > 0.5
-            B = zeros(T, ntuple(_ -> dim, rank))
+        if Svals[i] > 0.5
+            B_flat = zeros(T, block_size)
             for j in 1:D_sym
-                coeff = U[j, i]
-                for idx in sym_indices[j]
-                    B[idx...] += coeff / sqrt(length(sym_indices[j]))
+                coeff = U[j, i] * inv_sqrt_len[j]
+                @inbounds for lin in sym_lin[j]
+                    B_flat[lin] += coeff
                 end
             end
-            push!(basis_vectors, B)
+            push!(basis_vectors, reshape(B_flat, block_shape))
         end
     end
 
