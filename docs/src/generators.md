@@ -274,3 +274,68 @@ contract_generator_vector!
 contract_generator_matrix!
 AtomicSymmetries.contract_generators
 ```
+
+
+## Ensemble average coefficients
+
+When the full tensor is too large to store in memory — as is common for rank-3
+and rank-4 IFCs in supercells — generator coefficients can be computed directly
+from stochastic ensemble data (displacements and forces) without ever forming
+the full ``(d \cdot N_\text{at})^k`` tensor.
+
+This follows the approach of
+[Bianco et al. (arXiv:1703.03212)](https://arxiv.org/abs/1703.03212),
+where high-rank force constant tensors are estimated as ensemble averages:
+
+```math
+\Phi_{a_1 \cdots a_k} = -\frac{1}{N_c} \sum_{I=1}^{N_c}
+  v_{a_1}^{(I)} \cdots v_{a_{k-1}}^{(I)} \, f_{a_k}^{(I)},
+```
+
+where ``v^{(I)}`` and ``f^{(I)}`` are the Cartesian displacements and forces
+of configuration ``I``, and ``N_c`` is the number of configurations.
+
+Since the generators have full permutation symmetry, the last index is always
+contracted with forces (equivalent to any other choice by symmetry).
+The coefficient for generator ``g_i`` is computed as a sum over its compact
+Cartesian blocks, requiring only ``\mathcal O(d^k)`` operations per block
+per configuration — never ``\mathcal O((d \cdot N_\text{at})^k)``.
+
+### Batch computation
+
+When all configurations fit in memory, use the batch API:
+
+```julia
+generators = get_tensor_generators(symmetry_group, cell; rank=3)
+coeffs = zeros(Float64, length(generators))
+get_coefficients_from_ensemble!(coeffs, v, f, generators)
+```
+
+Here `v` and `f` are `(dim, nat, n_configs)` arrays of Cartesian displacements
+and forces. The coefficients can then be used with `reconstruct_tensor!` or
+the contraction functions (`contract_generator_vector!`, etc.).
+
+### Streaming computation
+
+For large ensembles that do not fit in memory, the streaming API processes
+one configuration at a time:
+
+```julia
+coeffs = zeros(Float64, length(generators))
+for I in 1:n_configs
+    v_I, f_I = load_config(I)  # user-defined loading function
+    accumulate_ensemble_config!(coeffs, v_I, f_I, generators)
+end
+coeffs .*= -1.0 / n_configs
+```
+
+The caller is responsible for zeroing `coeffs` before the first call and
+applying the ``-1/N_c`` normalization after all configurations have been
+processed.
+
+### Ensemble average API
+
+```@docs
+get_coefficients_from_ensemble!
+accumulate_ensemble_config!
+```

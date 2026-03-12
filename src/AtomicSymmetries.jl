@@ -15,6 +15,7 @@ include("symmetrize_qspace.jl")
 include("spglib_init.jl")
 include("generators.jl")
 include("efficient_generators.jl")
+include("ensemble_average.jl")
 include("asr.jl")
 include("filter_symmetries.jl")
 include("crystal.jl")
@@ -68,7 +69,9 @@ export get_symmetry_group_from_spglib,
         contract_generator_vector!,
         contract_generator_matrix!,
         get_little_group,
-        get_tensor_generators_fast
+        get_tensor_generators_fast,
+        get_coefficients_from_ensemble!,
+        accumulate_ensemble_config!
 
 
 

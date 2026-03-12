@@ -112,3 +112,11 @@ include("test_fcc_supercell_generators.jl")
     test_fast_vs_standard_generators()
     test_fcc_444_rotated_generators()
 end
+
+include("test_ensemble_average.jl")
+@testset "Ensemble average" begin
+    test_ensemble_rank2()
+    test_ensemble_rank3()
+    test_ensemble_rank4()
+    test_streaming_api()
+end
