@@ -461,6 +461,62 @@ This ensures that the generator, when reconstructed as a full tensor, satisfies 
 \end{algorithmic}
 \end{algorithm}
 
+\subsection{Kronecker product formulation of block operations}
+\label{sec:kronecker}
+
+A na\"ive implementation of the block rotation [Eq.~\eqref{eq:block_action}] performs $k$ sequential per-dimension contractions, each iterating over all $d^k$ elements with a runtime-length multi-index.
+In a dynamically typed or JIT-compiled language such as Julia, the splatted indexing \texttt{block[idx...]} with a runtime-length vector \texttt{idx} incurs dynamic dispatch overhead on every element access, which dominates the cost for moderate block sizes ($d^k = 81$ for $d=3$, $k=4$).
+
+The key observation is that the $k$-fold rotation kernel [Eq.~\eqref{eq:rotation_kernel}] is exactly a Kronecker (tensor) product.
+If we flatten the $d^k$ Cartesian block $B$ into a vector $\mathbf{b} \in \mathbb{R}^{d^k}$ (in column-major order), then the rotation [Eq.~\eqref{eq:block_action}] without the permutation step is
+\begin{equation}
+\mathbf{b}_{\mathrm{rot}}
+= \bigl(S^{\mathsf{T}} \otimes S^{\mathsf{T}} \otimes \cdots \otimes S^{\mathsf{T}}\bigr)\, \mathbf{b},
+\label{eq:kron_rotation}
+\end{equation}
+where $\otimes$ denotes the Kronecker product and the transpose arises from the convention $S_{\alpha\beta}$ in Eq.~\eqref{eq:rotation_kernel} (the Kronecker product naturally gives $S_{\beta\alpha}$, so the transpose is needed to match the per-index convention).
+
+Similarly, the Cartesian-index permutation $\pi_g$ corresponds to a gather operation on the flattened vector:
+\begin{equation}
+(\mathbf{b}_{\mathrm{perm}})_i = (\mathbf{b}_{\mathrm{rot}})_{p(i)},
+\label{eq:gather_perm}
+\end{equation}
+where $p$ is a precomputed permutation map on linear indices that encodes the index reordering $\pi_g$.
+The coordinate conversion [Eq.~\eqref{eq:coord_conversion}] admits the same Kronecker structure:
+\begin{equation}
+\mathbf{b}_{\mathrm{cart}}
+= \bigl(M^{\mathsf{T}} \otimes M^{\mathsf{T}} \otimes \cdots \otimes M^{\mathsf{T}}\bigr)\, \mathbf{b}_{\mathrm{cryst}}.
+\label{eq:kron_conversion}
+\end{equation}
+
+This reformulation replaces the element-wise loops with two operations that are highly optimized on modern hardware:
+\begin{enumerate}
+\item A dense matrix-vector multiply (BLAS \texttt{gemv}) with the precomputed $d^k \times d^k$ Kronecker matrix.
+For $d=3$, $k=4$, this is an $81 \times 81$ matrix-vector product, which BLAS executes in approximately $4\,\mu$s.
+\item A linear-index gather of $d^k$ elements, which costs approximately $0.15\,\mu$s.
+\end{enumerate}
+In the Reynolds operator [Eq.~\eqref{eq:reynolds}], the Kronecker matrices $S^{\mathsf{T}\otimes k}$ and permutation maps $p_g$ are precomputed once for each element of the Little Group $G_{\vT}$, then reused across all $D_{\mathcal{S}}$ basis vectors.
+The precomputation cost is $O(|G_{\vT}| \cdot d^{2k})$ for the Kronecker matrices and $O(|G_{\vT}| \cdot d^k)$ for the permutation maps; both are amortized over the $D_{\mathcal{S}} \cdot |G_{\vT}|$ iterations of the hot loop.
+
+Table~\ref{tab:kronecker_benchmark} shows the practical impact on three test systems at rank~4 ($d^k = 81$).
+The Kronecker formulation achieves speedups of 30--60$\times$ and allocation reductions of 15$\times$ compared to the sequential per-dimension contraction, while producing identical results to floating-point precision.
+
+\begin{table}[ht]
+\caption{Benchmark comparison for rank-4 generator construction: sequential per-dimension contraction vs.\ Kronecker product formulation.
+Times are wall-clock averages over 3 runs; allocations are per run.}
+\label{tab:kronecker_benchmark}
+\begin{ruledtabular}
+\begin{tabular}{lcccc}
+\textbf{System} & \textbf{Before (s)} & \textbf{After (s)} & \textbf{Speedup} & \textbf{Alloc.\ ratio} \\
+\colrule
+Gold (1 atom)       & 0.22  & 0.008 & 28$\times$ & 9$\times$ \\
+ZnS (2 atoms)       & 3.96  & 0.07  & 59$\times$ & 16$\times$ \\
+Perovskite (5 atoms) & 33.5  & 1.1   & 30$\times$ & 15$\times$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+
 \subsection{Comparison of the two methods}
 \label{sec:method_comparison}
 
@@ -616,15 +672,19 @@ The total cost is dominated by step (ii):
 \paragraph{Method~II.}
 For each canonical tuple $\vT$:
 (i)~computing $G_{\vT}$ costs $O(|G| \cdot k)$;
-(ii)~building the Reynolds matrix $P$ requires $|G_{\vT}|$ applications of $\hat{g}$ on $D_{\mathcal{S}}$ basis vectors, each costing $O(k \cdot d^{2k})$, plus the projection back onto the basis: $O(D_{\mathcal{S}}^2 \cdot |G_{\vT}| \cdot d^k)$;
+(ii)~building the Reynolds matrix $P$ requires $|G_{\vT}|$ applications of $\hat{g}$ on $D_{\mathcal{S}}$ basis vectors.
+With the Kronecker product formulation (Sec.~\ref{sec:kronecker}), each application costs $O(d^{2k})$ via a single BLAS matrix-vector multiply, plus $O(d^k)$ for the gather permutation.
+The precomputation of the $|G_{\vT}|$ Kronecker matrices costs $O(|G_{\vT}| \cdot d^{2k})$ and is amortized over all basis vectors.
+The projection back onto the basis costs $O(D_{\mathcal{S}}^2 \cdot |G_{\vT}| \cdot d^k)$;
 (iii)~SVD of the $D_{\mathcal{S}} \times D_{\mathcal{S}}$ matrix: $O(D_{\mathcal{S}}^3)$;
-(iv)~orbit propagation: $O(|G| \cdot d^{2k})$ per invariant vector.
+(iv)~orbit propagation: $O(|G| \cdot d^{2k})$ per invariant vector (again using a single Kronecker multiply per symmetry).
 
 Since $D_{\mathcal{S}} \leq d^k$ and is independent of $N$, the per-orbit cost is $O(|G_{\vT}| \cdot d^{3k})$ for the projection and $O(|G| \cdot d^{2k})$ for propagation.
 The key advantage is that $d^k$ is constant for a given rank, so no $(dN)^k$ tensor is ever materialized:
 \begin{equation}
 \text{Method~II:}\quad O\bigl(n_{\text{canon}} \cdot |G| \cdot d^{2k}\bigr).
 \end{equation}
+Note that the asymptotic scaling is unchanged compared to a sequential per-dimension implementation (which costs $O(k \cdot d^{k+1})$ per application, also $O(d^{2k})$ since $k \cdot d^{k+1} \leq d^{2k}$ for $k \geq 2$), but the Kronecker formulation achieves a much smaller constant factor by delegating the inner loop to BLAS (Sec.~\ref{sec:kronecker}).
 
 \paragraph{Memory.}
 Method~I requires $O(n_{\text{gen}} \cdot n_{\text{targets}} \cdot d^k)$ for the generator cache (compact blocks).
