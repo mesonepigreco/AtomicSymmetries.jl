@@ -110,6 +110,7 @@ include("test_fcc_supercell_generators.jl")
     test_contraction()
     test_compact_reconstruction()
     test_fast_vs_standard_generators()
+    test_cutoff_generators()
     test_fcc_444_rotated_generators()
 end
 

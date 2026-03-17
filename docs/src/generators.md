@@ -200,6 +200,32 @@ with `get_matrix_generators` (same number of independent generators,
 same invariant subspace). For rank 3 and higher, this is the only available
 interface.
 
+### Distance cutoff for large supercells
+
+For large supercells, the number of atom ``k``-tuples grows as ``\mathcal O(N_\text{at}^k)``,
+making generator construction expensive. Since most physical interactions are short-ranged,
+tuples with distant atoms contribute negligible tensor elements. The optional `cutoff`
+keyword argument skips atom tuples where any pairwise distance exceeds the cutoff,
+dramatically reducing computation time.
+
+```julia
+# Crystal-coordinate positions (dim × nat) and a distance cutoff in the same
+# length units as the cell matrix
+generators = get_tensor_generators(symmetry_group, cell;
+    rank=3, positions=positions_cryst, cutoff=10.0)
+
+# The fast method supports the same interface
+generators = get_tensor_generators_fast(symmetry_group, cell;
+    rank=3, positions=positions_cryst, cutoff=10.0)
+```
+
+The cutoff uses the minimum-image convention: fractional displacements are wrapped
+to ``[-0.5, 0.5]`` before converting to Cartesian for the physical distance.
+All ``k(k-1)/2`` pairwise distances in the tuple must be below the cutoff for the
+tuple to be included (same convention as hiPhive's cluster-space filtering).
+
+Setting `cutoff=Inf` reproduces the uncutoff result exactly.
+
 ### Symmetrizing a tensor
 
 The function `symmetrize_tensor!` applies the symmetrization projector to a

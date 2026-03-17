@@ -99,6 +99,9 @@ $B_{\mathrm{inv}}$ & Invariant block at orbit representative [Eq.~\eqref{eq:bloc
 $Q_\mu$          & Generator (basis tensor) of the invariant subspace \\
 $c_\mu$          & Expansion coefficient of $\Phi$ along $Q_\mu$ \\
 $A$              & $d \times d$ unit-cell matrix (columns = lattice vectors) \\
+$D_{ij}$         & Minimum-image pairwise distance between atoms $i$ and $j$ \\
+$r_c$            & Distance cutoff for tuple filtering \\
+$n_c$            & Average number of atoms within cutoff distance of a given atom \\
 \end{tabular}
 \end{ruledtabular}
 \end{table*}
@@ -624,7 +627,7 @@ A key implementation choice in \textsc{hiphive} is the use of \emph{scaled coord
 
 Our Method~II shares the orbit-decomposition philosophy but differs in several respects:
 \begin{itemize}
-\item We process \emph{all} atom tuples (no cutoff radius), appropriate for the dense tensor representation used in non-perturbative lattice dynamics.
+\item By default, we process \emph{all} atom tuples, appropriate for the dense tensor representation used in non-perturbative lattice dynamics. An optional distance cutoff (Sec.~\ref{sec:cutoff}), inspired by \textsc{hiphive}'s cluster enumeration, enables the same $r_c$-based pruning for sparse representations.
 \item We use the Reynolds operator (projection + SVD) rather than formulating explicit constraint equations.
 \item Our compact \texttt{Generator} data structure stores the full orbit (all nonzero blocks), enabling direct reconstruction and projection without re-applying symmetry operations.
 \item We work in floating-point crystal coordinates throughout, relying on the SVD threshold for numerical robustness rather than integer arithmetic.
@@ -694,6 +697,64 @@ The full tensor is only materialized during the symmetrization step of Method~I 
 
 
 % ═══════════════════════════════════════════════════════════════════════════════
+\section{Distance-Based Cutoff Filtering}
+\label{sec:cutoff}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+For large supercells, the number of sorted atom $k$-tuples grows as $O(N^k / k!)$, making the generator search expensive even when the resulting invariant subspace is sparse.
+In practice, most physical interactions are short-ranged: anharmonic IFCs decay rapidly with interatomic distance, so atom tuples containing distant pairs contribute negligible tensor elements.
+Following the cluster-space filtering strategy of \textsc{hiphive}~\cite{Eriksson2019,Fransson2020}, we introduce an optional distance cutoff that skips atom tuples with any pairwise distance exceeding a threshold $r_c$, dramatically reducing computation time while retaining all physically relevant generators.
+
+\subsection{Pairwise distance matrix}
+
+Given atomic positions $\mathbf{r}_i$ in crystal (fractional) coordinates and the cell matrix $A$, a symmetric $N \times N$ distance matrix $D$ is precomputed using the minimum-image convention:
+\begin{equation}
+D_{ij} = \bigl\| A \cdot \tilde{\boldsymbol{\delta}}_{ij} \bigr\|,
+\qquad
+\tilde{\delta}_{ij}^{(\alpha)} = \delta_{ij}^{(\alpha)} - \mathrm{round}\bigl(\delta_{ij}^{(\alpha)}\bigr),
+\label{eq:min_image_dist}
+\end{equation}
+where $\boldsymbol{\delta}_{ij} = \mathbf{r}_i - \mathbf{r}_j$ is the fractional displacement and $\mathrm{round}(\cdot)$ wraps each component to the interval $[-\tfrac{1}{2}, \tfrac{1}{2}]$.
+The multiplication by $A$ converts the wrapped fractional displacement to Cartesian coordinates for the physical distance.
+This is the same minimum-image convention used in \texttt{get\_irt!} for atom-permutation detection (implemented in \texttt{symmetries\_core.jl}).
+
+\subsection{Tuple filtering criterion}
+
+An atom $k$-tuple $\vT = (i_1, \ldots, i_k)$ is retained only if \emph{all} pairwise distances are within the cutoff:
+\begin{equation}
+\max_{1 \leq p < q \leq k} D_{i_p i_q} \leq r_c.
+\label{eq:cutoff_criterion}
+\end{equation}
+This is the ``complete-graph'' criterion: the atoms in the tuple must form a cluster whose diameter (maximum pairwise distance) does not exceed $r_c$.
+This matches the convention of \textsc{hiphive}, where each tensor rank accepts one cutoff value and all $\binom{k}{2}$ pairwise distances within the cluster must satisfy the constraint.
+
+Setting $r_c = \infty$ recovers the full (uncutoff) generator set, providing a smooth interface for both dense and sparse tensor representations.
+
+\subsection{Integration with both methods}
+
+The cutoff is implemented as an optional keyword argument (\texttt{cutoff}) accepted by both \texttt{get\_tensor\_generators} (Method~I) and \texttt{get\_tensor\_generators\_fast} (Method~II).
+The user must also supply the crystal-coordinate positions via the \texttt{positions} keyword.
+
+\paragraph{Method~I.}
+After the canonicality check and before the Cartesian-seed loop, the full tuple is tested against Eq.~\eqref{eq:cutoff_criterion}.
+If the tuple fails, it is skipped and the algorithm advances to the next sorted tuple.
+
+\paragraph{Method~II.}
+The cutoff is integrated into the recursive tuple-building function \texttt{\_iterate\_sorted\_from!} with \emph{incremental pruning}: at each recursion level $p$, the newly placed atom $i_p$ is checked against all previously placed atoms $i_1, \ldots, i_{p-1}$:
+\begin{equation}
+D_{i_j, i_p} \leq r_c \qquad \forall\; j \in \{1, \ldots, p-1\}.
+\label{eq:incremental_cutoff}
+\end{equation}
+If any pair violates the cutoff, the entire subtree rooted at this partial tuple is pruned (the recursion does not descend further).
+This is the key optimization: for rank~3 with $N = 64$ atoms and a nearest-neighbor cutoff, the pruning eliminates most of the $O(N^3)$ search space at the first recursion level, since most atom pairs are beyond the cutoff in a large supercell.
+
+\paragraph{Complexity reduction.}
+Let $n_c$ denote the average number of atoms within the cutoff distance of any given atom.
+With the incremental pruning, the number of tuples explored by Method~II scales as $O(N \cdot n_c^{k-1})$ rather than $O(N^k / k!)$.
+For short-range cutoffs ($n_c \ll N$), this represents a dramatic reduction, especially at high ranks.
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
 \section{Validation}
 \label{sec:validation}
 % ═══════════════════════════════════════════════════════════════════════════════
@@ -711,6 +772,12 @@ Agreement to $10^{-8}$ confirms that the generators form a complete basis and th
 The test verifies that (i)~both methods find the same number of generators, and (ii)~projecting a random symmetric matrix onto the Method~II generators and reconstructing it gives the same result as direct symmetrization via \texttt{symmetrize\_fc!}, to within $10^{-8}$.
 This test is particularly sensitive to coordinate-conversion and permutation-expansion correctness in Method~II, since PbTe has a non-orthogonal (rhombohedral) cell.
 \item \emph{Idempotency.} Symmetrizing a rank-3 tensor twice yields the same result, confirming that $\bar\Phi$ is a projector.
+\item \emph{Distance cutoff.} For a PbTe $2\times2\times2$ supercell (16~atoms), the cutoff functionality is validated through five checks:
+(i)~setting $r_c = \infty$ yields the same number of generators as the uncutoff call, confirming that the cutoff path does not alter the algorithm when inactive;
+(ii)~a finite nearest-neighbor cutoff produces strictly fewer generators, confirming that tuples are being pruned;
+(iii)~projecting a random symmetric matrix onto the cutoff generators, reconstructing, and re-symmetrizing yields the same tensor, confirming that the cutoff generators span a valid subspace of the full invariant space;
+(iv)~Method~I and Method~II with the same cutoff produce the same number of generators;
+(v)~passing \texttt{cutoff} without \texttt{positions} raises an \texttt{ArgumentError}.
 \end{enumerate}
 
 
@@ -727,7 +794,12 @@ Method~II constructs local invariant bases at each orbit representative via the 
 Both methods are implemented in the Julia package \textsc{AtomicSymmetries.jl} and validated against direct symmetrization for rank 2 and 3 on systems including randomly rotated FCC supercells with up to 64~atoms.
 The compact \texttt{Generator} data structure enables efficient reconstruction, projection, and contraction operations that scale with the number of nonzero blocks rather than the full tensor size.
 
-Compared with the eigentensor approach of \textsc{hiphive}~\cite{Eriksson2019}, our methods process all atom tuples (appropriate for dense tensor representations), use the Reynolds operator instead of explicit constraint equations, and store pre-propagated generators for direct use in downstream calculations.
+An optional distance-based cutoff, inspired by the cluster-space filtering of \textsc{hiphive}~\cite{Eriksson2019,Fransson2020}, allows skipping atom tuples whose maximum pairwise distance exceeds a threshold~$r_c$.
+This reduces the number of tuples explored from $O(N^k)$ to $O(N \cdot n_c^{k-1})$, where $n_c$ is the average coordination number within the cutoff, enabling efficient generator construction for large supercells with short-range interactions.
+In Method~II, the cutoff is integrated as incremental pruning in the recursive tuple enumeration, eliminating entire subtrees of the search space at early recursion levels.
+
+Compared with the eigentensor approach of \textsc{hiphive}~\cite{Eriksson2019}, our methods use the Reynolds operator instead of explicit constraint equations and store pre-propagated generators for direct use in downstream calculations.
+By default, all atom tuples are processed (appropriate for dense tensor representations in non-perturbative lattice dynamics), but the optional cutoff enables the same sparse-interaction paradigm when needed.
 
 \begin{acknowledgments}
 We acknowledge the use of Spglib~\cite{Togo2024spglib} for symmetry detection.

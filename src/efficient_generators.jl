@@ -266,6 +266,69 @@ function _kron_power(S::AbstractMatrix{T}, k::Int) where T
 end
 
 @doc raw"""
+    _compute_pairwise_distances(positions_cryst, cell)
+
+Compute the `nat × nat` minimum-image pairwise distance matrix from
+crystal-coordinate positions and the cell matrix.
+
+Uses `round()` on fractional displacements for the minimum-image convention,
+then converts to Cartesian via `cell * delta_cryst` for physical distance.
+"""
+function _compute_pairwise_distances(positions_cryst::AbstractMatrix, cell::AbstractMatrix)
+    dim, nat = size(positions_cryst)
+    dist_matrix = zeros(eltype(cell), nat, nat)
+    delta = zeros(eltype(cell), dim)
+    for i in 1:nat
+        for j in i+1:nat
+            for d in 1:dim
+                delta[d] = positions_cryst[d, i] - positions_cryst[d, j]
+                delta[d] -= round(delta[d])
+            end
+            cart_delta = cell * delta
+            dist = sqrt(sum(abs2, cart_delta))
+            dist_matrix[i, j] = dist
+            dist_matrix[j, i] = dist
+        end
+    end
+    return dist_matrix
+end
+
+@doc raw"""
+    _tuple_within_cutoff(atom_tuple, dist_matrix, cutoff, rank)
+
+Check if ALL pairwise distances in an atom tuple are below the cutoff.
+Returns `false` as soon as any pair exceeds cutoff.
+"""
+function _tuple_within_cutoff(atom_tuple::AbstractVector{Int}, dist_matrix::AbstractMatrix,
+    cutoff::Real, rank::Int)
+    for i in 1:rank-1
+        for j in i+1:rank
+            if dist_matrix[atom_tuple[i], atom_tuple[j]] > cutoff
+                return false
+            end
+        end
+    end
+    return true
+end
+
+@doc raw"""
+    _new_atom_within_cutoff(atom_tuple, pos, dist_matrix, cutoff)
+
+Incremental check: verify that atom at position `pos` in the tuple is within
+cutoff of all atoms at positions `1:pos-1`. Used for early pruning in recursive
+tuple iteration.
+"""
+function _new_atom_within_cutoff(atom_tuple::AbstractVector{Int}, pos::Int,
+    dist_matrix::AbstractMatrix, cutoff::Real)
+    for j in 1:pos-1
+        if dist_matrix[atom_tuple[j], atom_tuple[pos]] > cutoff
+            return false
+        end
+    end
+    return true
+end
+
+@doc raw"""
     _build_perm_map(sigma, dim, rank)
 
 Build a linear-index permutation map for a Cartesian block permutation.
@@ -714,16 +777,31 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 
 @doc raw"""
-    get_tensor_generators_fast(symmetry_group, cell; rank, type=Float64)
+    get_tensor_generators_fast(symmetry_group, cell; rank, type=Float64, positions=nothing, cutoff=nothing)
 
 Faster version of `get_tensor_generators` using orbit decomposition.
+
+# Keyword arguments
+- `rank::Int` — tensor rank.
+- `type::Type` — element type (default `Float64`).
+- `positions` — crystal-coordinate positions (`dim × nat`). Required when `cutoff` is set.
+- `cutoff` — distance cutoff: skip atom tuples where any pairwise distance exceeds
+  this value. Dramatically reduces computation for large supercells with short-range
+  interactions.
 """
 function get_tensor_generators_fast(symmetry_group::Symmetries{U}, cell::AbstractMatrix{T};
-    rank::Int, type::Type=Float64) where {U,T}
+    rank::Int, type::Type=Float64, positions=nothing, cutoff=nothing) where {U,T}
+
+    if cutoff !== nothing && positions === nothing
+        throw(ArgumentError("positions must be provided when cutoff is set"))
+    end
 
     dim = get_dimensions(symmetry_group)
     nat = get_n_atoms(symmetry_group)
     n_sym = get_nsymmetries(symmetry_group)
+
+    # Precompute pairwise distance matrix if cutoff is set
+    dist_matrix = cutoff !== nothing ? _compute_pairwise_distances(positions, cell) : nothing
 
     generators = Vector{Generator{type,rank,rank + 1}}()
 
@@ -737,13 +815,15 @@ function get_tensor_generators_fast(symmetry_group::Symmetries{U}, cell::Abstrac
     for i1 in atom_reps
         atom_tuple[1] = i1
         # Recursively fill the rest of the tuple: i1 <= i2 <= ... <= ik
-        _iterate_sorted_from!(generators, atom_tuple, 2, symmetry_group, cell, rank, type)
+        _iterate_sorted_from!(generators, atom_tuple, 2, symmetry_group, cell, rank, type,
+            dist_matrix, cutoff)
     end
 
     return generators
 end
 
-function _iterate_sorted_from!(generators, tuple, pos, sym_group, cell, rank, type)
+function _iterate_sorted_from!(generators, tuple, pos, sym_group, cell, rank, type,
+    dist_matrix, cutoff)
     nat = get_n_atoms(sym_group)
     if pos > rank
         # Tuple completely built. Check if canonical.
@@ -756,7 +836,12 @@ function _iterate_sorted_from!(generators, tuple, pos, sym_group, cell, rank, ty
 
     for i in tuple[pos-1]:nat
         tuple[pos] = i
-        _iterate_sorted_from!(generators, tuple, pos + 1, sym_group, cell, rank, type)
+        # Early pruning: check if the new atom is within cutoff of all previous atoms
+        if dist_matrix !== nothing && !_new_atom_within_cutoff(tuple, pos, dist_matrix, cutoff)
+            continue
+        end
+        _iterate_sorted_from!(generators, tuple, pos + 1, sym_group, cell, rank, type,
+            dist_matrix, cutoff)
     end
 end
 
@@ -1230,13 +1315,21 @@ end
 # ─────────────────────────────────────────────────────────────────────────────
 
 @doc raw"""
-    get_tensor_generators(symmetry_group, cell; rank, type=Float64)
+    get_tensor_generators(symmetry_group, cell; rank, type=Float64, positions=nothing, cutoff=nothing)
 
 Find a set of independent generators for the invariant subspace of rank-`rank`
 tensors under the given symmetry group, assuming full permutation symmetry
 between tensor indices.
 
 Returns a `Vector{Generator}` — the generators are orthonormal compact structs.
+
+# Keyword arguments
+- `rank::Int` — tensor rank.
+- `type::Type` — element type (default `Float64`).
+- `positions` — crystal-coordinate positions (`dim × nat`). Required when `cutoff` is set.
+- `cutoff` — distance cutoff: skip atom tuples where any pairwise distance exceeds
+  this value. Dramatically reduces computation for large supercells with short-range
+  interactions.
 
 # Algorithm
 1. Iterate over sorted atom k-tuples (only sorted due to permutation symmetry)
@@ -1248,11 +1341,18 @@ Returns a `Vector{Generator}` — the generators are orthonormal compact structs
    - If the residual has significant norm → normalize and accept as new generator
 """
 function get_tensor_generators(symmetry_group::Symmetries{U}, cell::AbstractMatrix{T};
-    rank::Int, type::Type=Float64) where {U,T}
+    rank::Int, type::Type=Float64, positions=nothing, cutoff=nothing) where {U,T}
+
+    if cutoff !== nothing && positions === nothing
+        throw(ArgumentError("positions must be provided when cutoff is set"))
+    end
 
     dim = get_dimensions(symmetry_group)
     nat = get_n_atoms(symmetry_group)
     n_modes = dim * nat
+
+    # Precompute pairwise distance matrix if cutoff is set
+    dist_matrix = cutoff !== nothing ? _compute_pairwise_distances(positions, cell) : nothing
 
     generators = Vector{Generator{type,rank,rank + 1}}()
     # Cache block-dicts of accepted generators for fast Gram-Schmidt projections
@@ -1267,6 +1367,14 @@ function get_tensor_generators(symmetry_group::Symmetries{U}, cell::AbstractMatr
         # of its orbit under the symmetry group, all its generators are
         # linear combinations of generators at the canonical representative.
         if !is_canonical_under_irt(atom_tuple, symmetry_group)
+            if !_increment_sorted_tuple!(atom_tuple, nat)
+                break
+            end
+            continue
+        end
+
+        # Distance cutoff: skip tuples where any pair exceeds the cutoff
+        if dist_matrix !== nothing && !_tuple_within_cutoff(atom_tuple, dist_matrix, cutoff, rank)
             if !_increment_sorted_tuple!(atom_tuple, nat)
                 break
             end

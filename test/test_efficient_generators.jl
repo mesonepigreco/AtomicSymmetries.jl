@@ -328,6 +328,91 @@ function test_fast_vs_standard_generators()
 end
 
 
+"""
+Test distance-based cutoff for tensor generator construction.
+
+Uses the PbTe 2×2×2 supercell (16 atoms) from test_rank2_consistency.
+"""
+function test_cutoff_generators()
+    # PbTe 2×2×2 supercell
+    a = 12.21
+    cell_uc = [-a 0.0 a; 0.0 a a; -a a 0.0]'
+    positions_uc = [0.0 0.0 0.0; 0.5 0.5 0.5]'
+    nat_uc = 2
+
+    new_pos = zeros(Float64, 3, 16)
+    for i in 1:2
+        for j in 1:2
+            for k in 1:2
+                for iat in 1:nat_uc
+                    new_pos[:, (i-1)*8 + (j-1)*4 + (k-1)*2 + iat] = positions_uc[:, iat] + [i-1, j-1, k-1]
+                end
+            end
+        end
+    end
+    new_pos /= 2.0
+    cell = cell_uc * 2.0
+    atomic_numbers = [(i - 1) % nat_uc + 1 for i in 1:nat_uc*8]
+
+    symmetry_group = get_symmetry_group_from_spglib(new_pos, cell, atomic_numbers)
+    nat = AtomicSymmetries.get_n_atoms(symmetry_group)
+    dim = AtomicSymmetries.get_dimensions(symmetry_group)
+    n_modes = dim * nat
+
+    # The positions are already in crystal coordinates (from the construction)
+    positions_cryst = new_pos
+
+    # --- Test 1: Inf cutoff should give the same generators as no cutoff ---
+    generators_nocutoff = get_tensor_generators(symmetry_group, cell; rank=2)
+    generators_inf = get_tensor_generators(symmetry_group, cell; rank=2,
+        positions=positions_cryst, cutoff=Inf)
+    @test length(generators_nocutoff) == length(generators_inf)
+
+    # --- Test 2: Finite cutoff gives fewer generators ---
+    # Use a cutoff that is shorter than the supercell diagonal but allows
+    # nearest-neighbor interactions (PbTe nearest-neighbor distance ~ a/sqrt(2) ≈ 8.63 Å)
+    cutoff_nn = a * 1.1  # slightly above nearest-neighbor distance
+    generators_cutoff = get_tensor_generators(symmetry_group, cell; rank=2,
+        positions=positions_cryst, cutoff=cutoff_nn)
+    @test length(generators_cutoff) < length(generators_nocutoff)
+    @test length(generators_cutoff) > 0
+
+    # --- Test 3: Cutoff generators produce a valid symmetry-invariant tensor ---
+    # Project a random symmetric tensor onto the cutoff generators, reconstruct,
+    # then verify the result is symmetry-invariant
+    fc = randn(Float64, n_modes, n_modes)
+    fc = (fc + fc') / 2
+
+    coeffs = zeros(Float64, length(generators_cutoff))
+    get_coefficients_from_tensor!(coeffs, fc, generators_cutoff, cell)
+
+    fc_recon = zeros(Float64, n_modes, n_modes)
+    reconstruct_tensor!(fc_recon, generators_cutoff, coeffs, cell)
+
+    # Symmetrize the reconstruction: should not change it
+    fc_recon_sym = copy(fc_recon)
+    symmetrize_fc!(fc_recon_sym, cell, symmetry_group)
+    @test fc_recon ≈ fc_recon_sym atol=1e-8
+
+    # --- Test 4: Both methods agree ---
+    generators_fast_cutoff = get_tensor_generators_fast(symmetry_group, cell; rank=2,
+        positions=positions_cryst, cutoff=cutoff_nn)
+    @test length(generators_cutoff) == length(generators_fast_cutoff)
+
+    # Also check fast method with Inf cutoff
+    generators_fast_inf = get_tensor_generators_fast(symmetry_group, cell; rank=2,
+        positions=positions_cryst, cutoff=Inf)
+    generators_fast_nocutoff = get_tensor_generators_fast(symmetry_group, cell; rank=2)
+    @test length(generators_fast_inf) == length(generators_fast_nocutoff)
+
+    # --- Test 5: Error on missing positions ---
+    @test_throws ArgumentError get_tensor_generators(symmetry_group, cell; rank=2,
+        cutoff=5.0)
+    @test_throws ArgumentError get_tensor_generators_fast(symmetry_group, cell; rank=2,
+        cutoff=5.0)
+end
+
+
 if abspath(PROGRAM_FILE) == @__FILE__
     include("define_cell.jl")
     test_index_helpers()
@@ -344,5 +429,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
     println("Compact reconstruction passed")
     test_fast_vs_standard_generators()
     println("Fast vs standard generators passed")
+    test_cutoff_generators()
+    println("Cutoff generators passed")
     println("All efficient generator tests passed!")
 end
