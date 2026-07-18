@@ -24,8 +24,14 @@ and the operation applies the symmetry rotation plus the atom permutation:
 operation additionally permutes q-points according to the symmetry:
 
 ```math
-\vec v'_{\text{irt}[a]}(q') = S\, \vec v_{a}(q), \qquad q' = S^{-T} q
+\vec v'_{\text{irt}[a]}(q') = e^{-2\pi i\, q'\cdot \vec v}\, S\, \vec v_{a}(q), \qquad q' = S^{-T} q
 ```
+
+where ``\vec v`` is the fractional translation of the symmetry. Since the
+vectors in q space follow the atomic-position phase gauge (see
+[`vector_r2q!`](@ref)), whenever ``S^{-T}q`` is folded back into the q grid by
+a reciprocal lattice vector ``\vec G``, the additional phase
+``e^{2\pi i \vec G\cdot \vec\tau_{\text{irt}[a]}}`` is applied.
 
 To symmetrize a vector (average over all symmetries), call this function for
 each symmetry and average the result. That is equivalent to what
@@ -108,9 +114,17 @@ function rotate_vector!(new_vector :: AbstractMatrix{Complex{T}}, old_vector :: 
                          reshape(old_vector, n_dims, :),
                          cell, reciprocal_vectors, false; q_space=false)
 
-        # Apply the matrix
+        # Apply the matrix (with the phase factors of the atomic-position gauge)
+        translation = nothing
+        if sym_index <= length(symmetry_group.symmetries.translations)
+            translation = symmetry_group.symmetries.translations[sym_index]
+        end
         apply_symmetry_vectorq!(new_vector, tmp_vector, symmetry_group[sym_index], symmetry_group.symmetries.irt[sym_index],
-                                symmetry_group.irt_q[sym_index])
+                                symmetry_group.irt_q[sym_index];
+                                positions=symmetry_group.positions,
+                                q_points=symmetry_group.q_points,
+                                translation=translation,
+                                buffer=buffer)
         tmp_vector .= new_vector
 
         # Convert back to cartesian
@@ -233,16 +247,19 @@ symmetry and the atom indices are permuted according to `irt`:
 
 **Q-space version** — the matrix has size ``(n_\text{modes}, n_\text{modes}, n_q)``.
 In addition to the block-wise rotation and atom permutation, the q-point is
-also permuted and phase factors from fractional translations are included:
+also permuted:
 
 ```math
 D'_{\text{irt}[a],\, \text{irt}[b]}(q')
-= e^{2\pi i\, q \cdot (\vec t_a - \vec t_b)}\,
-  S^\top\, D_{a b}(q)\, S
+= S^\top\, D_{a b}(q)\, S, \qquad q' = S^{-T} q
 ```
 
-where ``q' = S^{-T} q`` and ``\vec t_a`` are the unit-cell translations
-that bring the symmetry-transformed atom back into the primitive cell.
+Since the matrix in q space follows the atomic-position phase gauge (see
+[`matrix_r2q!`](@ref)), no phase factor from the fractional translations
+appears; however, whenever ``S^{-T}q`` is folded back into the q grid by a
+reciprocal lattice vector ``\vec G``, the folding phase
+``e^{2\pi i\, \vec G \cdot (\vec\tau_{\text{irt}[a]} - \vec\tau_{\text{irt}[b]})}``
+is applied (see [`apply_symmetry_matrixq!`](@ref)).
 
 To symmetrize a dynamical matrix, call this function for each symmetry and
 average the result. That is equivalent to what `symmetrize_fc!` (real space)
@@ -316,12 +333,12 @@ function rotate_dynamical_matrix!(new_matrix :: AbstractArray{Complex{T}, 3}, ol
         # Convert Cartesian -> crystal (3D version loops over q-slices)
         cart_cryst_matrix_conversion!(tmp_matrix, old_matrix, cell; cart_to_cryst=true, buffer=buffer)
 
-        # Apply symmetry (handles atom + q-point permutation + phase factors)
+        # Apply symmetry (handles atom + q-point permutation + folding phase factors)
         apply_symmetry_matrixq!(new_matrix, tmp_matrix,
                                 symmetry_group[sym_index],
                                 symmetry_group.symmetries.irt[sym_index],
                                 symmetry_group.irt_q[sym_index],
-                                symmetry_group.symmetries.unit_cell_translations[sym_index],
+                                symmetry_group.positions,
                                 symmetry_group.q_points;
                                 buffer=buffer)
 

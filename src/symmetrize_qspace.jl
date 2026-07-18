@@ -1,40 +1,58 @@
 @doc raw"""
-    SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatrix{T}) :: SymmetriesQSpace{T} where T
+    SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatrix{T}, positions :: AbstractMatrix{T}) :: SymmetriesQSpace{T} where T
 
     struct SymmetriesQSpace{T} <: GenericSymmetries where T
         symmetries :: Symmetries{T}
+        q_points :: Matrix{T}
+        positions :: Matrix{T}
         irt_q :: Vector{Vector{Int}}
         minus_q_index :: Vector{Int}
     end
 
 This structure contains the information to perform the symmetrization of a dynamical matrix directly in q space.
 
-**Note that the `q_points` needs to be in crystal coordinates**,
+**Note that the `q_points` and the `positions` need to be in crystal coordinates**,
 
 and the symmetries must be of the primitive cell.
+
+The atomic `positions` are required because the Fourier transform is defined
+with the phase factor gauge ``e^{2i\pi \vec q\cdot(\vec R + \vec\tau_a)}``
+(see [`vector_r2q!`](@ref) and [`matrix_r2q!`](@ref)).
+In this gauge the q-space quantities are not periodic in the Brillouin zone:
+whenever a symmetry maps a q point outside the grid
+(``S^{-T}\vec q = \vec q' + \vec G``), the folding by the reciprocal lattice
+vector ``\vec G`` introduces phase factors depending on ``\vec G\cdot\vec\tau_a``.
+
+**Important**: the `positions` must be the same used to compute the Fourier
+transform (expressed in crystal coordinates); using a different periodic image of an atom changes the gauge.
 
 
 ## Parameters
 
 - `symmetries` : The symmetries of the primitive cell (Symmetries{T})
 - `q_points` : The q points where the symmetries must be applied (in crystal coordinates)
+- `positions` : The atomic positions in the primitive cell (in crystal coordinates); size (n_dims, n_atoms)
 - `irt_q` : A vector (one for each symmetry) of the correspondances of q points. For each symmetry can be obtained from `get_irt_q!`
     Q points linked in this way are related by the symmetry operation in reciprocal space, and belong to the same star of q.
 - `minus_q_index` : A vector containing for each `q` the corresponding ``\vec {q'} = -\vec q + \vec G``, where ``\vec G`` is a generic reciprocal lattice vector.
 """
-struct SymmetriesQSpace{T} <: GenericSymmetries 
+struct SymmetriesQSpace{T} <: GenericSymmetries
     symmetries :: Symmetries{T}
     q_points :: Matrix{T}
+    positions :: Matrix{T}
     irt_q :: Vector{Vector{Int}}
     minus_q_index :: Vector{Int}
 end
-function SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatrix{T}; buffer = default_buffer()) :: SymmetriesQSpace{T} where T
+function SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatrix{T}, positions :: AbstractMatrix{T}; buffer = default_buffer()) :: SymmetriesQSpace{T} where T
     n_symmetries = length(symmetries)
     n_q = size(q_points, 2)
     n_dims = size(q_points, 1)
 
     my_q_points = zeros(T, n_dims, n_q)
     my_q_points .= q_points
+
+    my_positions = zeros(T, size(positions)...)
+    my_positions .= positions
 
     irt_q = Vector{Vector{Int}}(undef, n_symmetries)
     for i in 1:n_symmetries
@@ -45,7 +63,7 @@ function SymmetriesQSpace(symmetries :: Symmetries{T}, q_points :: AbstractMatri
     minus_q_index = zeros(Int, n_q)
     get_minus_q!(minus_q_index, q_points)
 
-    SymmetriesQSpace(symmetries, my_q_points, irt_q, minus_q_index)
+    SymmetriesQSpace(symmetries, my_q_points, my_positions, irt_q, minus_q_index)
 end
 
 get_dimensions(x ::SymmetriesQSpace) = get_dimensions(x.symmetries)
@@ -94,38 +112,99 @@ end
 
 
 @doc raw"""
-    apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, original_vector :: AbstractMatrix{Complex{T}}, symmetry_operation :: AbstractMatrix{U}, irt :: Vector{Int}, irt_q:: AbstractVector{Int})
+    apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, original_vector :: AbstractMatrix{Complex{T}}, symmetry_operation :: AbstractMatrix{U}, irt :: Vector{Int}, irt_q:: AbstractVector{Int}; positions = nothing, q_points = nothing, translation = nothing, buffer = default_buffer())
 
 
-Apply the symmetry on the original vector in q space
+Apply the symmetry on the original vector in q space.
+
+The vector in q space is assumed in the phase factor gauge
+``e^{-2i\pi \vec q\cdot(\vec R + \vec\tau_a)}`` (see [`vector_r2q!`](@ref)).
+In this gauge the application of a symmetry ``\{S | \vec v\}`` reads
+
+```math
+v'_{s(a)}(S^{-T}\vec q) = e^{-2i\pi (S^{-T}\vec q)\cdot \vec v}\, S\, v_a(\vec q)
+```
+
+with no atom-dependent phase. However, when ``S^{-T}\vec q`` falls outside the
+q grid, it is folded back by a reciprocal lattice vector ``\vec G``
+(``S^{-T}\vec q = \vec q_{\text{grid}} + \vec G``), and, since in this gauge
+vectors are not periodic in the Brillouin zone, the folding introduces the extra
+phase ``e^{2i\pi \vec G\cdot \vec\tau_{s(a)}}``.
+
+If `positions` and `q_points` are provided (in crystal coordinates), all
+these phase factors are computed and applied. If they are omitted (default),
+no phase is applied: this is only correct if the result is used at ``\Gamma``
+(e.g. inside [`symmetrize_vector_q!`](@ref)), or when all the phases are
+trivial (symmorphic group, no folding).
 
 ## Parameters
 
 - `target_vector` : The result (modified inplace) (3n x nq)
 - `original_vector` : The original vector (3n x nq)
-- `symmetry_operation` : The 3x3 symmetry 
+- `symmetry_operation` : The 3x3 symmetry (crystal coordinates, direct space)
 - `irt` : The atom-atom association by symmetry
 - `irt_q` : The q-q association by symmetry
+- `positions` : The atomic positions in the primitive cell (crystal coordinates, n_dims x n_atoms) [Optional, keyword]
+- `q_points` : The q points (crystal coordinates, n_dims x nq) [Optional, keyword]
+- `translation` : The fractional translation ``\vec v`` of the symmetry (crystal coordinates) [Optional, keyword]
+- `buffer` : The Bumper.jl buffer for caching memory allocations [Optional, keyword]
 """
 function apply_symmetry_vectorq!(target_vector :: AbstractMatrix{Complex{T}}, original_vector :: AbstractMatrix{Complex{T}},
-        symmetry_operation :: AbstractMatrix{U}, irt :: AbstractVector{Int}, irt_q :: AbstractVector{Int}) where {T, U}
-    # Apply symmetries 
+        symmetry_operation :: AbstractMatrix{U}, irt :: AbstractVector{Int}, irt_q :: AbstractVector{Int};
+        positions :: Union{Nothing, AbstractMatrix{T}} = nothing,
+        q_points :: Union{Nothing, AbstractMatrix{T}} = nothing,
+        translation :: Union{Nothing, AbstractVector{T}} = nothing,
+        buffer = default_buffer()) where {T, U}
+    # Apply symmetries
     nq = length(irt_q)
     n_dims = size(symmetry_operation, 1)
     n_atoms = size(target_vector, 1) ÷ n_dims
 
+    apply_phases = positions !== nothing
+    if apply_phases && q_points === nothing
+        error("Error in apply_symmetry_vectorq!: if `positions` are provided, also `q_points` must be provided.")
+    end
 
-    for iq in 1:nq
-        jq = irt_q[iq]
-
-        for i in 1:n_atoms
-            j = irt[i]
-
-            @views mul!(target_vector[n_dims * (j - 1) + 1: n_dims * j, jq], 
-                        symmetry_operation, 
-                        original_vector[n_dims * (i - 1) + 1: n_dims * i, iq],
-                        T(1.0), T(1.0))
+    @no_escape buffer begin
+        atom_phases = @alloc(Complex{T}, n_atoms)
+        G_vect = @alloc(T, n_dims)
+        sym_rec = @alloc(T, n_dims, n_dims)
+        if apply_phases
+            sym_rec .= inv(symmetry_operation)'
         end
+
+        for iq in 1:nq
+            jq = irt_q[iq]
+
+            # Compute the phases due to the folding into the q grid
+            # G = S^{-T} q_iq - q_jq and the fractional translation
+            atom_phases .= Complex{T}(1)
+            if apply_phases
+                @views mul!(G_vect, sym_rec, q_points[:, iq])
+                translation_phase = Complex{T}(1)
+                if translation !== nothing
+                    # exact q' = S^{-T} q_iq = q_jq + G
+                    @views q_dot_v = G_vect' * translation
+                    translation_phase = exp(-1im * 2π * q_dot_v)
+                end
+                @views G_vect .-= q_points[:, jq]
+
+                for a in 1:n_atoms
+                    @views g_dot_tau = G_vect' * positions[:, a]
+                    atom_phases[a] = exp(1im * 2π * g_dot_tau) * translation_phase
+                end
+            end
+
+            for i in 1:n_atoms
+                j = irt[i]
+
+                @views mul!(target_vector[n_dims * (j - 1) + 1: n_dims * j, jq],
+                            symmetry_operation,
+                            original_vector[n_dims * (i - 1) + 1: n_dims * i, iq],
+                            atom_phases[j], Complex{T}(1.0))
+            end
+        end
+        nothing
     end
 end
 
@@ -135,22 +214,42 @@ end
         sym :: AbstractMatrix{U},
         irt :: AbstractVector{Int},
         irt_q :: AbstractVector{Int},
-        unit_cell_translations :: AbstractMatrix{T},
+        positions :: AbstractMatrix{T},
+        q_points :: AbstractMatrix{T}
         ; buffer = default_buffer()) where {T, U}
 
 
-Apply the symmetry on the matrix in q space
-This subroutine assumes the convention that the phase factor is for each supercell, not atoms.
-In other words, all the atoms coordinates are computed from the same origin of the supercell they are associated with.
+Apply the symmetry on the matrix in q space.
+
+The matrix in q space is assumed in the phase factor gauge
+``e^{2i\pi \vec q\cdot(\vec R + \vec\tau_a)}`` (see [`matrix_r2q!`](@ref)),
+where the phase factors are computed from the atomic positions, not from the
+origin of the supercell in which each atom lies.
+
+In this gauge, the application of a symmetry ``\{S | \vec v\}`` reads
+
+```math
+M'_{s(a)s(b)}(S^{-T}\vec q) = S\, M_{ab}(\vec q)\, S^T
+```
+
+with no phase factors coming from the fractional translations (they cancel
+between the two atoms). However, in this gauge the matrix is not periodic in
+the Brillouin zone: whenever ``S^{-T}\vec q`` falls outside the q grid and is
+folded back by a reciprocal lattice vector ``\vec G``
+(``S^{-T}\vec q = \vec q_{\text{grid}} + \vec G``), the folding introduces the
+phase factor ``e^{2i\pi \vec G\cdot(\vec\tau_{s(a)} - \vec\tau_{s(b)})}``,
+which is accounted for by this subroutine.
+Everything (symmetries, positions and q points) must be provided in crystal coordinates.
 
 ## Parameters
 
-- `target_vector` : The result (modified inplace) (3n x nq)
-- `original_vector` : The original vector (3n x nq)
-- `symmetry_operation` : The 3x3 symmetry 
+- `target_matrix` : The result (modified inplace) (3n x 3n x nq)
+- `original_matrix` : The original matrix (3n x 3n x nq)
+- `sym` : The 3x3 symmetry (crystal coordinates, direct space)
 - `irt` : The atom-atom association by symmetry
 - `irt_q` : The q-q association by symmetry
-- `unit_cell_translations` : The translation vectors to move the transformed atom in the primitive cell
+- `positions` : The atomic positions inside the primitive cell (crystal coordinates, n_dims x n_atoms). They must be the same positions used to compute the Fourier transform.
+- `q_points` : The q points (crystal coordinates, n_dims x nq)
 - `buffer` : The Bumper.jl buffer for caching memory allocations [Optional]
 """
 function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
@@ -158,7 +257,7 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
         sym :: AbstractMatrix{U},
         irt :: AbstractVector{Int},
         irt_q :: AbstractVector{Int},
-        unit_cell_translations :: AbstractMatrix{T},
+        positions :: AbstractMatrix{T},
         q_points :: AbstractMatrix{T}
         ; buffer = default_buffer()) where {T, U}
 
@@ -169,22 +268,38 @@ function apply_symmetry_matrixq!(target_matrix :: AbstractArray{Complex{T}, 3},
 
     @no_escape buffer begin
         work = @alloc(Complex{T}, n_dims, n_dims)
-        δt = @alloc(T, n_dims)
+        G_vect = @alloc(T, n_dims)
+        sym_rec = @alloc(T, n_dims, n_dims)
+        atom_phases = @alloc(Complex{T}, n_atoms)
+
+        # The symmetry in reciprocal space (q' = S^{-T} q)
+        sym_rec .= inv(sym)'
+
         for iq in 1:nq
             iq_s = irt_q[iq]
+
+            # Get the reciprocal lattice vector G that folds S^{-T}q_iq
+            # back into the grid point q_{iq_s}
+            @views mul!(G_vect, sym_rec, q_points[:, iq])
+            @views G_vect .-= q_points[:, iq_s]
+
+            # Phases due to the folding: e^{2πi G·τ_a}
+            for a in 1:n_atoms
+                @views g_dot_tau = G_vect' * positions[:, a]
+                atom_phases[a] = exp(1im * 2π * g_dot_tau)
+            end
+
             for i ∈ 1:n_atoms
                 i_s = irt[i]
-                for j in 1:n_atoms 
+                for j in 1:n_atoms
                     j_s = irt[j]
-                    @views δt .= unit_cell_translations[:, i_s] .- unit_cell_translations[:, j_s]
-                    @views q_dot_t = dot(q_points[:, iq], δt)
-                    @views phase_factor = exp(1im * 2π * q_dot_t)
+                    phase_factor = atom_phases[i_s] * conj(atom_phases[j_s])
 
-                    @views mul!(work, 
-                                original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq_s], 
+                    @views mul!(work,
+                                original_matrix[n_dims*(i_s-1) + 1: n_dims*i_s, n_dims*(j_s-1)+1 : n_dims*j_s, iq_s],
                                 sym, T(1.0), T(0.0))
-                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq], 
-                        sym', work, phase_factor, 1.0)
+                    @views mul!(target_matrix[n_dims*(i-1) + 1: n_dims*i, n_dims*(j - 1) + 1: n_dims*j, iq],
+                        sym', work, phase_factor, Complex{T}(1.0))
                 end
             end
         end
@@ -445,11 +560,11 @@ The matrix must be in crystal coordinates.
 - `original_q` : The original matrix in q-space of size `n_modes, n_modes, nq`. It could be the same as target_q
 - `symmetries` : The symmetry group
 - `irt_q` : A vector (one for each symmetry) of the correspondances of q points. For each symmetry can be obtained from `get_irt_q!`
-- `unit_cell_translations` :: Vector{Matrix{T}} : The translations of the unit cell to bring back the atoms in the primitive cell after the symmetry operation. Each vector elements corresponds to one symmetry operation, then the matrix is a n_dims x n_atoms translation. This is usually the same as the content of `symmetries.unit_cell_translations`.
+- `positions` : The atomic positions in the primitive cell (crystal coordinates, n_dims x n_atoms). They must be the same positions used to compute the Fourier transform (see `apply_symmetry_matrixq!`).
 - `minus_q_index` : A vector containing for each `q` the corresponding ``\vec {q'} = -\vec q + \vec G``, where ``\vec G`` is a generic reciprocal lattice vector.
 - `q_points` : The vector containing the actual q points
 """
-function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, symmetries :: Symmetries, irt_q :: Vector{Vector{Int}}, unit_cell_translations :: Vector{Matrix{T}}, minus_q_index::Vector{Int}, q_points :: AbstractMatrix{T}; buffer = default_buffer())  where T
+function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, symmetries :: Symmetries, irt_q :: Vector{Vector{Int}}, positions :: AbstractMatrix{T}, minus_q_index::Vector{Int}, q_points :: AbstractMatrix{T}; buffer = default_buffer())  where T
 
     n_modes = size(original_q, 1)
     n_q = size(original_q, 3)
@@ -464,13 +579,7 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
             irt = symmetries.irt[i]
             q_irt = irt_q[i]
 
-            #println("Applying symmetry $i")
-            #println("Symmetry matrix:")
-            #println(sym_mat)
-            #@show q_irt
-            #@show unit_cell_translations[i]
-
-            apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt, unit_cell_translations[i], q_points; buffer=buffer)
+            apply_symmetry_matrixq!(tmp_matrix, original_q, sym_mat, irt, q_irt, positions, q_points; buffer=buffer)
         end
 
         tmp_matrix ./= length(symmetries)
@@ -498,7 +607,7 @@ function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original
     end
 end
 function symmetrize_matrix_q!(target_q :: AbstractArray{Complex{T}, 3}, original_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace; buffer = default_buffer())  where T
-    symmetrize_matrix_q!(target_q, original_q, q_symmetries.symmetries, q_symmetries.irt_q, q_symmetries.symmetries.unit_cell_translations, q_symmetries.minus_q_index, q_symmetries.q_points; buffer=buffer)
+    symmetrize_matrix_q!(target_q, original_q, q_symmetries.symmetries, q_symmetries.irt_q, q_symmetries.positions, q_symmetries.minus_q_index, q_symmetries.q_points; buffer=buffer)
 end
 function symmetrize_matrix_q!(matrix_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace; buffer = default_buffer())  where T
     @no_escape buffer begin
@@ -558,28 +667,83 @@ end
 
 
 @doc raw"""
+    impose_hermitianity_q!(matrix_q :: AbstractArray{Complex{T}, 3}, minus_q_index, positions :: AbstractMatrix{T}, q_points :: AbstractMatrix{T}; buffer=default_buffer()) where T
+    impose_hermitianity_q!(matrix_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace{T}; buffer=default_buffer()) where T
     impose_hermitianity_q!(matrix_q :: AbstractArray{Complex{T}, 3}, minus_q_index; buffer=default_buffer()) where T
 
 Impose the hermitianity and time-reversal symmetry on the dynamical matrix in q space.
+
+The matrix in q space is assumed in the phase factor gauge
+``e^{2i\pi \vec q\cdot(\vec R + \vec\tau_a)}`` (see [`matrix_r2q!`](@ref)).
+In this gauge the time-reversal constraint ``M_{ab}(-\vec q) = M_{ab}(\vec q)^*``
+still holds exactly; however, since ``-\vec q`` is stored in the grid at
+``\vec q_j = -\vec q + \vec G_m``, and the matrix is not periodic in the
+Brillouin zone, the folding introduces the block phase factor
+``e^{2i\pi \vec G_m\cdot(\vec\tau_a - \vec\tau_b)}``.
+For this reason the atomic `positions` and the `q_points`
+(both in crystal coordinates) are needed.
+
+The method accepting only `minus_q_index` does not apply any folding phase:
+it is correct only when all the phases are trivial (e.g. all the atoms sit
+at the origin of the cell, or the q grid is closed under inversion without folding, like a grid centered around ``\Gamma``).
 
 ## Parameters
 
 - `matrix_q` : The dynamical matrix in q space (modified inplace)
 - `minus_q_index` : A vector containing for each `q` the corresponding ``\vec {q'} = -\vec q + \vec G``, where ``\vec G`` is a generic reciprocal lattice vector.
+- `positions` : The atomic positions in the primitive cell (crystal coordinates, n_dims x n_atoms). They must be the same positions used to compute the Fourier transform.
+- `q_points` : The q points (crystal coordinates, n_dims x nq)
+- `q_symmetries` : The symmetries in q space (contains `minus_q_index`, `positions` and `q_points`)
 
 """
-function impose_hermitianity_q!(matrix_q :: AbstractArray{Complex{T}, 3}, minus_q_index :: AbstractVector{Int}; buffer=default_buffer()) where T
+function impose_hermitianity_q!(matrix_q :: AbstractArray{Complex{T}, 3}, minus_q_index :: AbstractVector{Int},
+        positions :: Union{Nothing, AbstractMatrix{T}}, q_points :: Union{Nothing, AbstractMatrix{T}}; buffer=default_buffer()) where T
     n_q = size(matrix_q, 3)
     n_modes = size(matrix_q, 1)
+
+    apply_phases = positions !== nothing
+    if apply_phases && q_points === nothing
+        error("Error in impose_hermitianity_q!: if `positions` are provided, also `q_points` must be provided.")
+    end
+
+    n_dims = apply_phases ? size(positions, 1) : 0
+    n_atoms = apply_phases ? size(positions, 2) : 0
+
     @no_escape buffer begin
         target_q = @alloc(Complex{T}, size(matrix_q)...)
+        phases = @alloc(Complex{T}, n_modes, n_modes, n_q)
+        G_vect = apply_phases ? (@alloc(T, n_dims)) : (@alloc(T, 1))
+        atom_phases = apply_phases ? (@alloc(Complex{T}, n_atoms)) : (@alloc(Complex{T}, 1))
 
-        # Apply the hermitianity
+        # Compute the block phases e^{2πi G_m·(τ_a - τ_b)} with G_m = q_iq + q_{minus_q_index[iq]}
+        phases .= Complex{T}(1)
+        if apply_phases
+            for iq in 1:n_q
+                @views G_vect .= q_points[:, iq] .+ q_points[:, minus_q_index[iq]]
+                for a in 1:n_atoms
+                    @views g_dot_tau = G_vect' * positions[:, a]
+                    atom_phases[a] = exp(1im * 2π * g_dot_tau)
+                end
+                for b in 1:n_atoms
+                    for a in 1:n_atoms
+                        block_phase = atom_phases[a] * conj(atom_phases[b])
+                        for β in 1:n_dims
+                            for α in 1:n_dims
+                                phases[n_dims*(a-1) + α, n_dims*(b-1) + β, iq] = block_phase
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        # Impose the symmetry of the real-space matrix:
+        # M_ab(q) = phase_ab * M_ba(-q)
         for iq in 1:n_q
             for h in 1:n_modes
                 for k in 1:n_modes
                     target_q[k,h, iq] = matrix_q[k, h, iq]
-                    target_q[k,h, iq] += matrix_q[h, k, minus_q_index[iq]]
+                    target_q[k,h, iq] += phases[k, h, iq] * matrix_q[h, k, minus_q_index[iq]]
                 end
             end
         end
@@ -589,11 +753,23 @@ function impose_hermitianity_q!(matrix_q :: AbstractArray{Complex{T}, 3}, minus_
         # Apply the time-reversal symmetry
         matrix_q .= target_q
         for iq in 1:n_q
-            @views target_q[:, :, iq] .+= conj.(matrix_q[:, :, minus_q_index[iq]]')
+            jq = minus_q_index[iq]
+            for h in 1:n_modes
+                for k in 1:n_modes
+                    target_q[k, h, iq] += phases[k, h, iq] * matrix_q[h, k, jq]
+                end
+            end
         end
         target_q ./= T(2)
         matrix_q .= target_q
+        nothing
     end
+end
+function impose_hermitianity_q!(matrix_q :: AbstractArray{Complex{T}, 3}, minus_q_index :: AbstractVector{Int}; buffer=default_buffer()) where T
+    impose_hermitianity_q!(matrix_q, minus_q_index, nothing, nothing; buffer=buffer)
+end
+function impose_hermitianity_q!(matrix_q :: AbstractArray{Complex{T}, 3}, q_symmetries :: SymmetriesQSpace{T}; buffer=default_buffer()) where T
+    impose_hermitianity_q!(matrix_q, q_symmetries.minus_q_index, q_symmetries.positions, q_symmetries.q_points; buffer=buffer)
 end
 
 @doc raw"""

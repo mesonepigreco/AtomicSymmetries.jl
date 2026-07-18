@@ -120,11 +120,11 @@ function test_symmetrize_q_space(; verbose=false)
     AtomicSymmetries.apply_sym_centroid!(u_next, u_coordinates[1, :], uc_group.symmetries[i_sym], ndims, irt)
 
     # Apply the symmetry in q-space
-    AtomicSymmetries.vector_r2q!(q_coordinates, u_coordinates, q_vec, super_itau, R_lat)
+    AtomicSymmetries.vector_r2q!(q_coordinates, u_coordinates, q_vec, super_itau, R_lat, positions)
 
     #@views AtomicSymmetries.apply_symmetry_vectorq!(q_next[1, :, :], q_coordinates[1, :, :], uc_group.symmetries[2], uc_group.irt[2], irt_q)
 
-    AtomicSymmetries.vector_q2r!(u_next_back, q_coordinates, q_vec, super_itau, R_lat)
+    AtomicSymmetries.vector_q2r!(u_next_back, q_coordinates, q_vec, super_itau, R_lat, positions)
     
     # Test the fourier transform
     if verbose
@@ -140,9 +140,11 @@ function test_symmetrize_q_space(; verbose=false)
     end
     
     AtomicSymmetries.get_irt_q!(irt_q, q_vec, uc_group.symmetries[i_sym])
-    @views AtomicSymmetries.apply_symmetry_vectorq!(q_next[1, :, :], q_coordinates[1, :, :], uc_group.symmetries[i_sym], uc_group.irt[i_sym], irt_q)
+    @views AtomicSymmetries.apply_symmetry_vectorq!(q_next[1, :, :], q_coordinates[1, :, :], uc_group.symmetries[i_sym], uc_group.irt[i_sym], irt_q;
+                                                    positions=positions, q_points=q_vec,
+                                                    translation=uc_group.translations[i_sym])
 
-    AtomicSymmetries.vector_q2r!(u_next_back, q_next, q_vec, super_itau, R_lat)
+    AtomicSymmetries.vector_q2r!(u_next_back, q_next, q_vec, super_itau, R_lat, positions)
  
 
     # Compare the two vectors
@@ -207,10 +209,10 @@ function test_symmetrize_q_space(; verbose=false)
         
         # Perform the fourier transform of the dynamical matrix
         AtomicSymmetries.matrix_r2q!(dynq_trial, fc_trial, q_vec, super_itau,
-                                     R_lat)
-        AtomicSymmetries.matrix_q2r!(fc_backward1, dynq_trial, q_vec, super_itau, R_lat; translations=translations)
+                                     R_lat, positions)
+        AtomicSymmetries.matrix_q2r!(fc_backward1, dynq_trial, q_vec, super_itau, R_lat, positions; translations=translations)
         AtomicSymmetries.matrix_r2q!(dynq_back2, fc_backward1, q_vec, super_itau,
-                                     R_lat)
+                                     R_lat, positions)
 
         # Test the fourier transform of the dynamical matrix
         for iq in 1:n_sc
@@ -237,17 +239,17 @@ function test_symmetrize_q_space(; verbose=false)
                                                uc_group.symmetries[i_sym],
                                                uc_group.irt[i_sym],
                                                irt_q,
-                                               trans_vect,
+                                               positions,
                                                q_vec
                                               )
-        AtomicSymmetries.matrix_q2r!(fc_trial, dynq_back2, q_vec, super_itau, R_lat; translations=translations)
+        AtomicSymmetries.matrix_q2r!(fc_trial, dynq_back2, q_vec, super_itau, R_lat, positions; translations=translations)
         # Now, fc_trial contains the dynamical matrix with the symmetry applied in q space
         # Let us apply the symmetry also to fc_backward1 -> fc_backward2
         AtomicSymmetries.apply_sym_fc!(fc_backward2, fc_backward1, uc_group.symmetries[i_sym], ndims, irt)
 
         dynq_fc_symmetrized = similar(dynq_back2)
         dynq_fc_symmetrized .= 0
-        AtomicSymmetries.matrix_r2q!(dynq_fc_symmetrized, fc_backward2, q_vec, super_itau, R_lat)
+        AtomicSymmetries.matrix_r2q!(dynq_fc_symmetrized, fc_backward2, q_vec, super_itau, R_lat, positions)
 
         # Now we can compare fc_backward2 and fc_backward
         if verbose && print_next
@@ -330,12 +332,12 @@ function test_symmetrize_q_space(; verbose=false)
     # Now, we can test the full symmetrization
     # TODO: THe errpr see,s tp be that fc_backward1 has a lot of zeros and 
     # it is not the real starting point!!!
-    q_symmetries = AtomicSymmetries.SymmetriesQSpace(uc_group, q_vec)
+    q_symmetries = AtomicSymmetries.SymmetriesQSpace(uc_group, q_vec, positions)
     AtomicSymmetries.symmetrize_matrix_q!(dynq_back2, dynq_trial, q_symmetries)
-    AtomicSymmetries.matrix_q2r!(fc_trial, dynq_back2, q_vec, super_itau, R_lat; translations=translations)
+    AtomicSymmetries.matrix_q2r!(fc_trial, dynq_back2, q_vec, super_itau, R_lat, positions; translations=translations)
 
     # Now let us perform the symmetrization directly in cartesian space
-    AtomicSymmetries.matrix_q2r!(fc_backward2, dynq_trial, q_vec, super_itau, R_lat; translations=translations)
+    AtomicSymmetries.matrix_q2r!(fc_backward2, dynq_trial, q_vec, super_itau, R_lat, positions; translations=translations)
     fc_backward1 = copy(fc_backward2)
     sc_group.symmetrize_fc!(fc_backward2)
 
@@ -399,6 +401,7 @@ function test_fourier_matrix(; verbose=false)
     q_tot = [0.0 0.5; 0.0 0.0; 0.0 0.0]
     R_lat = [0.0 0.0 1.0 1.0; 0.0 0.0 0.0 0.0; 0.0 0.0 0.0 0.0]
     itau = [1, 2, 1, 2]
+    tau = [0.0 0.3; 0.0 0.1; 0.0 0.2]
     translations = [[1, 2, 3, 4], [3, 4, 1, 2]]
 
     
@@ -411,13 +414,13 @@ function test_fourier_matrix(; verbose=false)
     phi_q_bis = similar(phi_q)
 
     # Convert in q space
-    matrix_r2q!(phi_q, phi_r, q_tot, itau, R_lat)
+    matrix_r2q!(phi_q, phi_r, q_tot, itau, R_lat, tau)
 
     # Convert back in r space
-    matrix_q2r!(phi_q2r, phi_q, q_tot, itau, R_lat;
+    matrix_q2r!(phi_q2r, phi_q, q_tot, itau, R_lat, tau;
                 translations)
 
-    matrix_r2q!(phi_q_bis, phi_q2r, q_tot, itau, R_lat)
+    matrix_r2q!(phi_q_bis, phi_q2r, q_tot, itau, R_lat, tau)
 
     for iq in 1:2
         for k in 1:6
