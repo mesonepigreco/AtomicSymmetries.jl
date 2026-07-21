@@ -101,7 +101,7 @@ function test_coset_decomposition_qspace(; verbose=false)
     q_points = Float64[0 0.5 0 0 0.5 0.5 0 0.5;
                        0 0 0.5 0 0.5 0 0.5 0.5;
                        0 0 0 0.5 0 0.5 0.5 0.5]
-    q_group = SymmetriesQSpace(original_group, q_points)
+    q_group = SymmetriesQSpace(original_group, q_points, positions)
 
     n_original = length(q_group)
     if verbose

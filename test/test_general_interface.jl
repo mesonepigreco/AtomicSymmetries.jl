@@ -158,7 +158,7 @@ function test_rotate_vector_qspace(; verbose=false)
         end
     end
 
-    symmetry_group_q = SymmetriesQSpace(symmetry_group_uc, q_points_cryst)
+    symmetry_group_q = SymmetriesQSpace(symmetry_group_uc, q_points_cryst, positions)
     n_sym = length(symmetry_group_q)
 
     n_dims = 3
@@ -213,7 +213,7 @@ function test_rotate_dynamical_matrix_qspace(; verbose=false)
     q_points_cryst = zeros(Float64, size(q_tot)...)
     cryst_cart_conv!(q_points_cryst, q_tot, unit_cell, reciprocal_lattice, false; q_space=true)
 
-    symmetry_group_q = SymmetriesQSpace(symmetry_group_uc, q_points_cryst)
+    symmetry_group_q = SymmetriesQSpace(symmetry_group_uc, q_points_cryst, unit_cell_structure)
     n_sym = length(symmetry_group_q)
 
     n_dims = 3

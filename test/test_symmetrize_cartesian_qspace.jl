@@ -17,6 +17,7 @@ function test_symmetrize_cartesian_qspace(; verbose=false)
     R_lat = [0.0 2.7869170943386137 2.7869170943386137 5.573834188677228 5.573834188677226 8.36075128301584 8.36075128301584 11.147668377354455; 0.0 1.6090273346255681 4.827082003876703 6.436109338502272 0.0 1.6090273346255681 4.827082003876703 6.436109338502272; 0.0 4.55101655771302 0.0 4.55101655771302 0.0 4.55101655771302 0.0 4.55101655771302]
 
     unit_cell_structure = zeros(Float64, 3, 1)
+    tau_cart = zeros(Float64, 3, 1)  # atomic positions in cartesian coords (same units as R_lat)
     unit_cell = [2.94954603 1.4747730150000002 1.4747730150000002; 0.0 2.554381791611538 0.8514605972038461; 0.0 0.0 2.408294248783948]
     unit_cell .*= 1.889725989
 
@@ -41,12 +42,12 @@ function test_symmetrize_cartesian_qspace(; verbose=false)
     get_reciprocal_lattice!(reciprocal_lattice, unit_cell)
     cryst_cart_conv!(q_points_cryst, q_tot, unit_cell, reciprocal_lattice, false; q_space = true)
 
-    symmetry_group_q = SymmetriesQSpace(symmetry_group_uc, q_points_cryst)
+    symmetry_group_q = SymmetriesQSpace(symmetry_group_uc, q_points_cryst, unit_cell_structure)
 
     # Convert the matrix in q space
     nq = size(q_tot, 2)
     q_matrix = zeros(Complex{Float64}, 3, 3, nq)
-    matrix_r2q!(q_matrix, rs_matrix, q_tot, itau, R_lat)
+    matrix_r2q!(q_matrix, rs_matrix, q_tot, itau, R_lat, tau_cart)
 
     # Convert everything in crystal coordinates
     q_crystal_mat = similar(q_matrix)
@@ -88,13 +89,13 @@ function test_symmetrize_cartesian_qspace(; verbose=false)
         irt = symmetry_group_q.symmetries.irt[i]
         q_irt = symmetry_group_q.irt_q[i]
         my_irt = symmetry_group_sc.irt[i]
-        uc_trans = symmetry_group_q.symmetries.unit_cell_translations[i]
+        positions = symmetry_group_q.positions
         q_pts = symmetry_group_q.q_points
 
         # My IRT
 
         # Apply the symmetry
-        AtomicSymmetries.apply_symmetry_matrixq!(q_tmp_mat, q_matrix, symmat, irt, q_irt, uc_trans, q_pts)
+        AtomicSymmetries.apply_symmetry_matrixq!(q_tmp_mat, q_matrix, symmat, irt, q_irt, positions, q_pts)
 
         # Apply the symmetry in real space
         AtomicSymmetries.apply_sym_fc!(rs_tmp_mat, rs_matrix, symmat, 3, my_irt)
@@ -104,7 +105,7 @@ function test_symmetrize_cartesian_qspace(; verbose=false)
 
 
         # Convert to q space
-        matrix_r2q!(q_target, rs_tmp_mat, q_tot, itau, R_lat)
+        matrix_r2q!(q_target, rs_tmp_mat, q_tot, itau, R_lat, tau_cart)
 
         @test isapprox(q_target, q_tmp_mat; rtol = 1e-8, atol = 1e-12)
     end
@@ -125,7 +126,7 @@ function test_symmetrize_cartesian_qspace(; verbose=false)
     # Perform the symmetrization in real space
     symmetrize_fc!(rs_matrix, supercell, symmetry_group_sc)
 
-    matrix_r2q!(q_target, rs_matrix, q_tot, itau, R_lat)
+    matrix_r2q!(q_target, rs_matrix, q_tot, itau, R_lat, tau_cart)
     if verbose
         @show q_target
     end

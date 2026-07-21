@@ -89,6 +89,16 @@ end
     test_fractional_symmetries_qspace()
 end
 
+@testset "Fourier gauge" begin
+    # Tests of the atomic-position phase gauge e^{2πi q·(R + τ)}
+    include("test_fourier_gauge.jl")
+    test_gauge_phase_relation()
+    test_gauge_roundtrip()
+    test_gauge_symmetry_application()
+    test_gauge_vector_symmetry()
+    test_gauge_hermitianity()
+end
+
 include("test_general_interface.jl")
 @testset "General interface" begin
     test_rotate_vector_real()

@@ -7,13 +7,32 @@ This is implemented now for force-constant dynamical matrices and vectors (displ
 A vector is transformed from real to q-space with the following convention:
 
 ```math
-\tilde v_k(\vec q) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{-i 2\pi \vec R\cdot \vec q} v_k(\vec R)
+\tilde v_a(\vec q) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{-i 2\pi \vec q\cdot (\vec R + \vec\tau_a)} v_a(\vec R)
 ```
 
 ```math
-v_k(\vec R) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{i 2\pi \vec R\cdot \vec q} \tilde v_k(\vec q)
+v_a(\vec R) = \frac{1}{\sqrt{N_q}} \sum_{\vec q} e^{i 2\pi \vec q\cdot(\vec R + \vec\tau_a)} \tilde v_a(\vec q)
 ```
 
+where ``\vec\tau_a`` is the position of the atom ``a`` inside the primitive cell,
+so that ``\vec R + \vec\tau_a`` is the equilibrium position of the atom in the supercell.
+
+The phase factor employs the atomic positions ``\vec R + \vec\tau_a`` and not only
+the origin ``\vec R`` of the cell each atom belongs to. This is a gauge choice:
+the two conventions are related by the atom-dependent rephasing
+``e^{-2i\pi \vec q\cdot\vec\tau_a}``. The atomic-position gauge is adopted
+(since version 0.12) because it makes the Fourier transformed quantities smooth
+functions of ``\vec q``, which is much better suited for interpolating
+quantities in q space. The price to pay is that quantities in this gauge are
+**not periodic in the Brillouin zone**:
+
+```math
+\tilde v_a(\vec q + \vec G) = e^{-2i\pi \vec G\cdot \vec\tau_a}\, \tilde v_a(\vec q)
+```
+
+This must be carefully accounted for whenever a q point is folded back into the
+grid by a reciprocal lattice vector ``\vec G`` (this occurs when applying symmetries,
+see below).
 
 Note the sign of the Fourier and the normalization prefactor. 
 This convention allows for correctly transforming the matrices, however, it introduces a size inconsistency on the vectors.
@@ -23,12 +42,18 @@ the value in the primitive cell. So be carefull when extracting ``\Gamma`` point
 With this convention, we recover the standard rule for the matrices.
 
 ```math
-\tilde \Phi_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
+\tilde \Phi_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot (\vec R + \vec\tau_a - \vec\tau_b)}\Phi_{a + \vec R;b}
 ```
 
 ```math
 \Phi_{ab} = \frac{1}{N_q} \sum_{\vec q}
-\tilde\Phi_{ab}(\vec  q) e^{2i\pi \vec q\cdot[\vec R(a) - \vec R(b)]}
+\tilde\Phi_{ab}(\vec  q) e^{2i\pi \vec q\cdot[(\vec R(a) + \vec\tau_a) - (\vec R(b) + \vec\tau_b)]}
+```
+
+As for the vectors, the matrix in this gauge is not periodic in the Brillouin zone:
+
+```math
+\tilde\Phi_{ab}(\vec q + \vec G) = e^{2i\pi \vec G\cdot(\vec\tau_a - \vec\tau_b)}\, \tilde\Phi_{ab}(\vec q)
 ```
 
 Note that these transformation of matrices and vector are consistent so that matrices and vector written as outer product can be consistently transformed
@@ -44,10 +69,10 @@ Note that these transformation of matrices and vector are consistent so that mat
 Notably, this convention introduces two main properties that must be handled with care.
 The ``\Gamma`` value of the fourier transform is not the average over the supercell of the same
 quantity. If you want to obtain the average, you must divide by ``\sqrt {N_q}`` (the number of q-points).
-If the `R_lat` is not centered around zero, and the coordinates passed as `v_sc` are absolute values of positions,
-then the ``\Gamma`` value of the fourier transform will be shifted by a total translation which is the average of the translations of the supercell lattice
-vectors.
-This can be avoided by either removing the corner of the supercell from the positions before performing the fourier transform, by centering R_lat around 0,
+If the coordinates passed as `v_sc` are absolute values of positions,
+then the ``\Gamma`` value of the fourier transform will be shifted by a total translation which is the average of the equilibrium positions.
+This can be avoided by passing `absolute_positions = true` (which subtracts the
+equilibrium positions ``\vec R + \vec\tau_a`` before transforming),
 or by removing this translational average *a posteriori* using the method `shift_position_origin!`.
 
 
@@ -82,6 +107,8 @@ Due to time-inversion symmetry, the dynamical matrix must also satisfy the condi
 D(q) = D^\dagger(-q + G)
 ``
 
+(where, in the atomic-position phase gauge, the folding by ``G`` introduces the block
+phase factor ``e^{2i\pi \vec G\cdot(\vec\tau_a - \vec\tau_b)}``, see `impose_hermitianity_q!`),
 therefore it is necessary also to keep track, for each q point, which one is the corresponding ``-q + G`` in the mesh. This mapping is computed by the helper function `get_minus_q!`. All these information needs to be stored when applying symmetries. Therefore we defined a new Symmetries struct that ihnerits from the `GenericSymmetries` called `SymmetriesQSpace`. Note that, to initialize the symmetries in q-space, we **must** use the symmetries object (`Symmetries`) evaluated in the primitive cell. The correct initialization of symmetries could be checked with the subroutine `check_symmetries`, which will spot if a different cell has been employed when initializing the symmetries.
 
 Since the q points must be passed in crystal coordinates, it may be useful to get the reciprocal lattice, which can be done with ``get_reciprocal_lattice!`` (see section on crystal coordinates for the API)
@@ -99,52 +126,65 @@ D(q, q') = D(q)\delta(q - q')
 
 This means that applying each symmetry operation in ``q`` space is equivalent to averaging the result of the same symmetry operation in the supercell averaging among all possible translations.
 
-The application of a symmetry in q space can be performed by considering how the force-constant matrix transform in real space under a symmetry operation ``S``.
+The application of a symmetry in q space can be performed by considering how the force-constant matrix transforms in real space under a symmetry operation ``\{S | \vec v\}`` (rotation ``S`` plus fractional translation ``\vec v``, in crystal coordinates).
+
+In the atomic-position phase gauge the derivation is particularly simple.
+The symmetry maps the equilibrium position of the atom ``a`` in the cell ``\vec R``
+into the equilibrium position of the atom ``s(a)`` in another cell:
 
 ```math
-S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R} e^{2\pi i \bm q\cdot \bm R}S^\dagger\Phi_{S\bm a, S(\bm b + \bm R)}S
-```
-The transformation also changes which atoms are considered. However, we must be careful with the convention adopted for the Fourier transform. In fact, we have
-that $\bm a$ and $\bm b$ are the positions on the atom in the primitive cell considered. The vectors $S\bm a$ and $S(\bm b + \bm R)$ may not correspond to atoms in the primitive cell, but rather folded in the supercell. 
-To solve this issue, we need to define, for each symmetry operation, which atom in the primitive cell is mapped into which other atom in the primitive cell. This is indicated with ``s(a)`` and ``s(b)``. Also, we need to consider
-what is the translation vector ``\bm t_{s,a}`` that brings the vector ``S\bm a`` inside the primitive cell. With this information, we can rewrite the transformation as
-```math
-\bm t_{s,a} = S\bm a - \bm{s(a)}
+S(\vec R + \vec\tau_a) + \vec v = \vec R\,' + \vec \tau_{s(a)}
 ```
 
-```math
-S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R} e^{2\pi i \bm q\cdot \bm R}S^\dagger\Phi_{s(a) + \bm t_{s,a}, s(b) + \bm t_{s, b} + S\bm R}S
-```
-
-Exploiting the translational invariance, we can remove the $\bm t_{s,a}$ vector from the first index of the supercell force constant matrix, and rewrite the expression as
-
+Since the phase factors of the Fourier transform are computed exactly from these
+equilibrium positions, the phases follow the atoms through the symmetry
+operation, and the transformation of the dynamical matrix takes the form
 
 ```math
-S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R} e^{2\pi i \bm q\cdot \bm R}S^\dagger\Phi_{s(a), s(b) + \bm t_{s, b} - \bm t_{s, a} + S\bm R}S
-```
-By defining ``\bm R' = \bm t_{s, b} - \bm t_{s, a} + S\bm R``, we can rewrite the summation in ``\bm R'`` as
-
-
-```math
-S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R'} e^{2\pi i \bm q\cdot S^{-1} (\bm R' + \bm t_{s,a} - \bm t_{s,b})}S^\dagger\Phi_{s(a), s(b) + \bm R'}S
-```
-Since we work in crystal coordinates and reciprocal vectors, ``S^{-1}\neq S^\dagger``. Therefore, we have
-
-```math
-S[\tilde\Phi_{ab}(\bm q)] = \sum_{\bm R'} e^{2\pi i [(\bm S^{-1})^\dagger\bm q]\cdot(\bm R' + \bm t_{s,a} - \bm t_{s,b})}S^\dagger\Phi_{s(a), s(b) + \bm R'}S
-```
-
-Which is equivalent to the Fourier transform of the dynamical matrix at the transformed q-point ``(\bm S^{-1})^\dagger\bm q``, times a phase factor.
-This is how symmetries operates in q space:
-```math
+S[\tilde\Phi_{ab}(\bm q)] = S^\dagger\, \tilde\Phi_{s(a)s(b)}(S_\text{recip}\bm q)\, S,
+\qquad
 \bm S_\text{recip} = \left(\bm S^{-1}\right)^\dagger
 ```
 
+with **no phase factor** associated with the fractional translations: the phases
+``e^{-2i\pi (S_\text{recip}\bm q)\cdot \vec v}`` picked up by the two displacement
+vectors cancel between the two atomic indices (this is one of the advantages of
+this gauge with respect to the lattice one, where a phase factor
+``e^{2\pi i \bm q\cdot(\bm t_{s,a} - \bm t_{s,b})}`` involving the unit-cell
+translations ``\bm t_{s,a} = S\vec\tau_a + \vec v - \vec\tau_{s(a)}`` appears).
+
+However, in this gauge the dynamical matrix is **not periodic** in the reciprocal
+lattice. The vector ``S_\text{recip}\bm q`` may fall outside the q grid, and it is
+folded back into the grid point ``\bm q_{\text{grid}}`` by a reciprocal lattice
+vector ``\bm G``:
+
 ```math
-S[\tilde\Phi_{ab}(\bm q)] = S^\dagger \tilde\Phi_{s(a)s(b)}(S_\text{recip}\bm q) S e^{2\pi i (S_\text{recip}\bm q)\cdot ( \bm t_{s,a} - \bm t_{s,b})}
+S_\text{recip}\bm q = \bm q_{\text{grid}} + \bm G
 ```
 
-Note that the ``S_\text{recip}q`` vector in the phase factor and in the dynamical matrix can be always folded back into the first Brilluin zone. In fact the dynamical matrix is periodic in the reciprocal vector, while the phase factor is multiplied by a direct lattice vector. Thus, by adding a reciprocal lattice vector ``\bm G`` to ``S_\text{recip}\bm q``, the phase factor is multiplied by ``e^{2\pi i \bm G\cdot ( \bm t_{s,a} - \bm t_{s,b})}``, which is always equal to 1.
+The folding introduces the phase factor
+
+```math
+\tilde\Phi_{s(a)s(b)}(\bm q_\text{grid} + \bm G) = e^{2\pi i \bm G\cdot(\vec\tau_{s(a)} - \vec\tau_{s(b)})}\, \tilde\Phi_{s(a)s(b)}(\bm q_\text{grid})
+```
+
+which is computed and applied automatically by `apply_symmetry_matrixq!`.
+For this reason, the atomic positions inside the primitive cell (in crystal
+coordinates) must be provided when initializing `SymmetriesQSpace`, and they
+must be the same positions employed in the Fourier transform (choosing a
+different periodic image of an atom changes the gauge).
+
+For vectors, the fractional translation phase does not cancel, and the
+transformation reads
+
+```math
+S[\tilde v_{a}(\bm q)] = e^{-2\pi i (S_\text{recip}\bm q)\cdot \vec v}\,
+e^{2\pi i \bm G\cdot \vec\tau_{s(a)}}\, S\, \tilde v_{a}(\bm q)
+```
+
+These phases are applied by `apply_symmetry_vectorq!` when the positions, the
+q points and the fractional translation are provided (they are automatically
+provided when using the general interface `rotate_vector!`).
 
 The application of symmetries is handled by the general function `rotate_vector!` and `rotate_dynamical_matrix!` or `rotate_matrix!` that works exactly like for real space symmetries, with the same general interface. However, we also provide specific q-space only functions. Note that, while the `rotate_*` functions works in cartesian space, the following one expects symmetries in real space.
 
