@@ -105,7 +105,7 @@ function test_filter_fourier(; verbose=false)
     symmetry_group = get_symmetry_group_from_spglib(crystal, cell, types)
 
     # Convert the symmetry group in q space = 
-    q_symmetry_group = SymmetriesQSpace(symmetry_group, q_points, crystal)
+    q_symmetry_group = SymmetriesQSpace(symmetry_group, q_points)
 
     # Filter the invariant symmetries
     filter_invariant_symmetries!(q_symmetry_group, polarization_vector, cell)

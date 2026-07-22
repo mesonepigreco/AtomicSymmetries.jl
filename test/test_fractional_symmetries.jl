@@ -61,8 +61,8 @@ function test_fractional_symmetries_qspace(; verbose=false)
     symmetries_uc = get_symmetry_group_from_spglib(cryst_coords, primitive_cell, types_uc)
 
     Φ_q = zeros(ComplexF64, n_dims * nat, n_dims * nat, n_q)
-    matrix_r2q!(Φ_q, Φ_sc, qpoints, itau, Rlat, coords_uc)
-    symmetries_qspace = SymmetriesQSpace(symmetries_uc, q_points, cryst_coords)
+    matrix_r2q!(Φ_q, Φ_sc, qpoints, itau, Rlat)
+    symmetries_qspace = SymmetriesQSpace(symmetries_uc, q_points)
 
 
     # Perform the symmetrization in real space and in q_space, then compare
@@ -82,7 +82,7 @@ function test_fractional_symmetries_qspace(; verbose=false)
 
     # Convert the supercell force constants to q space for comparison
     Φ_q_real_space_sym = zeros(ComplexF64, n_dims * nat, n_dims * nat, n_q)
-    matrix_r2q!(Φ_q_real_space_sym, Φ_sc, qpoints, itau, Rlat, coords_uc)
+    matrix_r2q!(Φ_q_real_space_sym, Φ_sc, qpoints, itau, Rlat)
 
     hplack = PhysicalConstants.CODATA2018.h
 
@@ -101,28 +101,16 @@ function test_fractional_symmetries_qspace(; verbose=false)
         end
         @test isapprox(Φ_q[:, :, i], Φ_q_real_space_sym[:, :, i]; atol=1e-10, rtol=1e-6)
 
-        # In the atomic-position phase gauge, the time-reversal relation between
-        # the stored q and -q + G picks up the block phase e^{2πi G·(τ_a - τ_b)}
-        j = symmetries_qspace.minus_q_index[i]
-        G_m = symmetries_qspace.q_points[:, i] .+ symmetries_qspace.q_points[:, j]
-        minus_q_phases = zeros(ComplexF64, n_dims * nat, n_dims * nat)
-        for b in 1:nat
-            for a in 1:nat
-                block_phase = exp(2im * π * (G_m' * (cryst_coords[:, a] .- cryst_coords[:, b])))
-                minus_q_phases[n_dims*(a-1)+1:n_dims*a, n_dims*(b-1)+1:n_dims*b] .= block_phase
-            end
-        end
-
         if verbose
-            delta_minus_q = maximum(abs.(Φ_q[:, :, j] - minus_q_phases .* conj.(Φ_q[:, :, i])))
-            println("iq = $i; -q mapped to iq = ", j)
+            delta_minus_q = maximum(abs.(Φ_q[:, :, i] - conj.(Φ_q[:, :, symmetries_qspace.minus_q_index[i]])))
+            println("iq = $i; -q mapped to iq = ", symmetries_qspace.minus_q_index[i])
             println("q = $(symmetries_qspace.q_points[:, i])")
-            println("minus q = $(symmetries_qspace.q_points[:, j])")
+            println("minus q = $(symmetries_qspace.q_points[:, symmetries_qspace.minus_q_index[i]])")
             println("Δ = $delta_minus_q")
             println()
         end
 
-        @test isapprox(Φ_q[:, :, j], minus_q_phases .* conj.(Φ_q[:, :, i]); rtol=1e-10, atol=1e-12)
+        @test isapprox(Φ_q[:, :, i], conj.(Φ_q[:, :, symmetries_qspace.minus_q_index[i]]); rtol=1e-10, atol=1e-12)
     end
 
 end

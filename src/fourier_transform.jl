@@ -3,41 +3,26 @@
     vector_r2q!(
         v_q :: AbstractArray{Complex{T}, 3},
         v_sc :: AbstractMatrix{T},
-        q :: Matrix{T},
-        itau :: Vector{I},
-        R_lat :: Matrix{T},
-        tau :: Matrix{T}
-    ) where {T <: AbstractFloat, I <: Integer}
+        q_tot :: Matrix{T})
     vector_r2q!(v_q :: AbstractArray{Complex{T}, 2},
         v_sc :: AbstractVector{T},
         q :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T},
-        tau :: Matrix{T}
+        R_lat :: Matrix{T}
     ) where {T <: AbstractFloat, I <: Integer}
 
 
 Fourier transform a vector from real space and q space.
 
-The phase-factor convention (gauge) includes the atomic positions ``\vec \tau_a``
-inside the primitive cell:
-
 ``
 \displaystyle
-v_a(\vec q) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{-i 2\pi \vec q\cdot (\vec R + \vec\tau_a)} v_a(\vec R)
+v_k(\vec q) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{-i 2\pi \vec R\cdot \vec q} v_k(\vec R)
 ``
 
-where ``\vec R + \vec \tau_a`` is the equilibrium position of the atom in the supercell.
-This gauge (in contrast with the one employing only ``\vec R``) makes the
-Fourier transformed quantities smooth functions of ``\vec q``, which is much
-better suited for interpolation in q space.
-Note that, as a consequence, quantities in this gauge are not periodic in the
-Brillouin zone: ``v_a(\vec q + \vec G) = e^{-2i\pi \vec G\cdot \vec\tau_a} v_a(\vec q)``.
-
-It works both on a single vector and on a series of vector.
+It works both on a single vector and on a series of vector. 
 NOTE: In the latter case, the number
-of configurations must be in the first column.
-This is not standard,
+of configurations must be in the first column. 
+This is not standard, 
 but implemented in this way for performance reasons as
 it is the most convenient memory rapresentation for vectorizing the
 average calculation.
@@ -47,43 +32,38 @@ Notably, this convention introduces two main properties:
 The ``\Gamma`` value of the fourier transform is not the average over the supercell of the same
 quantity. If you want to obtain the average, you must divide by √nq (the number of q-points).
 
-If the coordinates passed as `v_sc` are absolute values of positions,
-then the ``\Gamma`` value of the fourier transform will be shifted by a total translation
-proportional to the average of the equilibrium positions.
+If the `R_lat` is not centered around zero, and the coordinates passed as `v_sc` are absolute values of positions,
+then the ``\Gamma`` value of the fourier transform will be shifted by a total translation which is the average of the translations of the supercell lattice
+vectors.
 
 To avoid this behaviour (which is wrong), you can use the option `absolute_positions`,
-which automatically rescales the `v_sc` to be displacements with respect to the
-equilibrium positions ``\vec R + \vec\tau_a``.
-Indeed, in this case, `R_lat`, `tau` and `v_sc` must be of the same
+which automatically rescales the `v_sc` to be coordinates relative
+to the respective cell origin identified by `R_lat`.
+Indeed, in this case, `R_lat` and `v_sc` must be of the same 
 units, and coordinate types (you cannot mix crystalline and cartesian).
 
 
 ## Parameters
 
-- `v_q` : (n_configs, 3nat, nq)
+- `v_q` : (n_configs, 3nat, nq) 
     The target vector in Fourier space. Optionally, n_configs could be omitted if transforming only 1 vector
 - `v_sc` : (n_configs, 3*nat_sc)
     The original vector in real space. Optionally, n_configs could be omitted if transforming only 1 vector
-- `q` : (3, nq)
+- `q_tot` : (3, nq)
     The list of q vectors
 - `itau` : (nat_sc)
     The correspondance for each atom in the supercell with the atom in the primitive cell.
 - `R_lat` : (3, nat_sc)
     The origin coordinates of the supercell in which the atom is
-- `tau` : (3, nat)
-    The positions of the atoms inside the primitive cell.
-    Must be expressed in the same units and coordinates as `R_lat`
-    (and dual to `q`, so that ``\vec q \cdot (\vec R + \vec\tau)`` is in units of 2π).
 - `absolute_positions` : Bool
-    If true [default false], removes from v_sc the equilibrium positions `R_lat + tau`.
+    If true [default false], removes from v_sc the value of R_lat.
 """
 function vector_r2q!(
         v_q :: AbstractArray{Complex{T}, 3},
         v_sc :: AbstractMatrix{T},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T},
-        tau :: AbstractMatrix{T};
+        R_lat :: AbstractMatrix{T};
         absolute_positions :: Bool = false
     ) where {T <: AbstractFloat, I <: Integer}
 
@@ -97,18 +77,17 @@ function vector_r2q!(
 
     for jq ∈ 1:nq
         for k ∈ 1:nat_sc
-            k_uc = itau[k]
-            @views q_dot_R = q[:, jq]' * R_lat[:, k] + q[:, jq]' * tau[:, k_uc]
+            @views q_dot_R = q[:, jq]' * R_lat[:, k]
             exp_value = exp(- 1im * 2π * q_dot_R)
 
             for α in 1:3
                 index_sc = 3 * (k - 1) + α
-                index_uc = 3 * (k_uc - 1) + α
+                index_uc = 3 * (itau[k] - 1) + α
                 @simd for i ∈ 1:n_random
-                    # Remove the equilibrium position if needed
+                    # Remove the absolute position if needed
                     δ_value = v_sc[i, index_sc]
                     if absolute_positions
-                        δ_value -= R_lat[α, k] + tau[α, k_uc]
+                        δ_value -= R_lat[α, k]
                     end
 
                     v_q[i, index_uc, jq] += exp_value * δ_value
@@ -124,12 +103,11 @@ function vector_r2q!(
         v_sc :: AbstractVector{T},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T},
-        tau :: AbstractMatrix{T};
+        R_lat :: AbstractMatrix{T};
         kwargs...
     ) where {T <: AbstractFloat, I <: Integer}
 
-    vector_r2q!(reshape(v_q, 1, size(v_q)...), reshape(v_sc, 1, size(v_sc)...), q, itau, R_lat, tau; kwargs...)
+    vector_r2q!(reshape(v_q, 1, size(v_q)...), reshape(v_sc, 1, size(v_sc)...), q, itau, R_lat; kwargs...)
 end
 
 
@@ -137,10 +115,9 @@ end
     vector_q2r!(
         v_sc :: AbstractMatrix{T},
         v_q :: AbstractArray{Complex{T}, 3},
-        q :: Matrix{T},
+        q_tot :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T},
-        tau :: Matrix{T};
+        R_lat :: Matrix{T};
         absolute_positions :: Bool = false
         ) where {T <: AbstractFloat, I <: Integer}
     function vector_q2r!(
@@ -148,20 +125,16 @@ end
         v_q :: AbstractMatrix{Complex{T}},
         q :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T},
-        tau :: Matrix{T};
+        R_lat :: Matrix{T};
         absolute_positions :: Bool = false
     ) where {T <: AbstractFloat, I <: Integer}
 
 
 Fourier transform a vector from q space to real space.
 
-The phase-factor convention (gauge) includes the atomic positions ``\vec\tau_a``
-inside the primitive cell (see [`vector_r2q!`](@ref)):
-
 ``
 \displaystyle
-v_a(\vec R) = \frac{1}{\sqrt{N_q}} \sum_{\vec q} e^{+i 2\pi \vec q\cdot (\vec R + \vec \tau_a)} v_a(\vec q)
+v_k(\vec R) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{+i 2\pi \vec R\cdot \vec q} v_k(\vec q)
 ``
 
 It can be applied both to a single vector and in an ensemble.
@@ -174,27 +147,23 @@ This choice is made for performance reason in computing averages (exploiting vec
 
 - `v_sc` : (n_configs, 3*nat_sc)
     The target vector in real space. Optionally, n_configs can be omitted
-- `v_q` : (n_configs, nq, 3*nat)
+- `v_q` : (n_configs, nq, 3*nat) 
     The original vector in Fourier space. Optionally, n_configs can be omitted
-- `q` : (3, nq)
+- `q_tot` : (3, nq)
     The list of q vectors
 - `itau : (nat_sc)`
     The correspondance for each atom in the supercell with the atom in the primitive cell.
 - `R_lat : (3, nat_sc)`
     The origin coordinates of the supercell in which the atom is
-- `tau : (3, nat)`
-    The positions of the atoms inside the primitive cell
-    (same units and coordinates as `R_lat`).
 - `absolute_positions` : Bool
-    If true, add the equilibrium positions `R_lat + tau` to the transformed v_sc
+    If true, add the absolute position of the cell to the transformed v_sc
 """
 function vector_q2r!(
         v_sc :: AbstractMatrix{T},
         v_q :: AbstractArray{Complex{T}, 3},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T},
-        tau :: AbstractMatrix{T};
+        R_lat :: AbstractMatrix{T};
         absolute_positions :: Bool = false
     ) where {T <: AbstractFloat, I <: Integer}
 
@@ -207,13 +176,12 @@ function vector_q2r!(
 
     for jq ∈ 1:nq
         for k ∈ 1:nat_sc
-            k_uc = itau[k]
-            @views q_dot_R = q[:, jq]' * R_lat[:, k] + q[:, jq]' * tau[:, k_uc]
+            @views q_dot_R = q[:, jq]' * R_lat[:, k]
             exp_value = exp(1im * 2π * q_dot_R)
 
             for α in 1:3
                 index_sc = 3 * (k - 1) + α
-                index_uc = 3 * (k_uc - 1) + α
+                index_uc = 3 * (itau[k] - 1) + α
                 @simd for i ∈ 1:n_random
                     tmp_vector[i, index_sc] += exp_value * v_q[i, index_uc, jq]
                 end
@@ -224,11 +192,11 @@ function vector_q2r!(
     v_sc .+= real(tmp_vector)
     v_sc ./= √(nq)
 
-    # Add the equilibrium positions (unscaled) if requested
+    # Add the absolute positions (unscaled) if requested
     if absolute_positions
         for h in 1:nat_sc
             for k in 1:3
-                δvalue = R_lat[k, h] + tau[k, itau[h]]
+                δvalue = R_lat[k, h]
                 index = 3*(h-1) + k
                 v_sc[:, index] .+= δvalue
             end
@@ -241,12 +209,11 @@ function vector_q2r!(
         v_q :: AbstractMatrix{Complex{T}},
         q :: AbstractMatrix{T},
         itau :: AbstractVector{I},
-        R_lat :: AbstractMatrix{T},
-        tau :: AbstractMatrix{T};
+        R_lat :: AbstractMatrix{T};
         kwargs...
     ) where {T <: AbstractFloat, I <: Integer}
 
-    vector_q2r!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat, tau; kwargs...)
+    vector_q2r!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat; kwargs...)
 end
 
 
@@ -256,30 +223,20 @@ end
         matrix_r :: AbstractMatrix{T},
         q :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T},
-        tau :: Matrix{T})
+        R_lat :: Matrix{T})
 
 Fourier transform a matrix from real to q space
 
-The phase-factor convention (gauge) includes the atomic positions
-``\vec\tau_a`` inside the primitive cell:
-
 ```math
-M_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot (\vec R + \vec\tau_a - \vec\tau_b)}\Phi_{a + \vec R;b}
+M_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot \vec R}\Phi_{a;b + \vec R}
 ```
 
-Where ``\Phi_{ab}`` is the real space matrix, the ``a+\vec R`` indicates the corresponding atom in the supercell displaced by ``\vec R``.
-The phase is thus computed from the difference of the equilibrium positions of the
-two atoms, ``(\vec R_a + \vec\tau_a) - (\vec R_b + \vec\tau_b)``.
-This gauge makes ``M_{ab}(\vec q)`` a smooth function of ``\vec q``, better
-suited for the interpolation. As a consequence, the matrix is not periodic in
-the Brillouin zone:
-``M_{ab}(\vec q + \vec G) = e^{2i\pi \vec G\cdot(\vec\tau_a - \vec\tau_b)} M_{ab}(\vec q)``.
+Where ``\Phi_{ab}`` is the real space matrix, the ``b+\vec R`` indicates the corresponding atom in the supercell displaced by ``\vec R``. 
 
 
 ## Parameters
 
-- `matrix_q` : (3nat, 3nat, nq)
+- `matrix_q` : (3nat, 3nat, nq) 
     The target matrix in Fourier space.
 - `matrix_r` : (3*nat_sc, 3*nat)
     The original matrix in real space (supercell)
@@ -289,23 +246,19 @@ the Brillouin zone:
     The correspondance for each atom in the supercell with the atom in the primitive cell.
 - `R_lat` : (3, nat_sc)
     The origin coordinates of the supercell in which the corresponding atom is
-- `tau` : (3, nat)
-    The positions of the atoms inside the primitive cell
-    (same units and coordinates as `R_lat`).
 """
 function matrix_r2q!(
         matrix_q :: AbstractArray{Complex{T}, 3},
         matrix_r :: AbstractMatrix{T},
         q :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T},
-        tau :: Matrix{T}; buffer = default_buffer()) where {T, I<: Integer}
+        R_lat :: Matrix{T}; buffer = default_buffer()) where {T, I<: Integer}
     nq = size(q, 2)
     ndims = size(q, 1)
     nat_sc = size(matrix_r, 1) ÷ ndims
     nat = size(matrix_q, 1) ÷ ndims
 
-    matrix_q .= T(0.0)
+    matrix_q .= T(0.0) 
 
     @no_escape buffer begin
         ΔR⃗ = @alloc(T, ndims)
@@ -316,20 +269,17 @@ function matrix_r2q!(
         for iq in 1:nq
             for k_i in 1:nat
                 @simd for h_i in 1:nat_sc
-                    h_i_uc = itau[h_i]
-
                     @views ΔR⃗ .= R_lat[:, k_i]
-                    @views ΔR⃗ .+= tau[:, itau[k_i]]
                     @views ΔR⃗ .-= R_lat[:, h_i]
-                    @views ΔR⃗ .-= tau[:, h_i_uc]
                     @views q_dot_R = ΔR⃗' * q[:, iq]
+
+                    h_i_uc = itau[h_i]
 
                     exp_factor = exp(phase_i * q_dot_R)
                     @views tmp_mat .= matrix_r[(ndims*(h_i - 1) + 1 : ndims * h_i), (ndims*(k_i - 1) +1 : ndims*k_i)]
                     tmp_mat .*= exp_factor 
 
                     @views matrix_q[(ndims*(h_i_uc - 1) + 1 : ndims * h_i_uc), (ndims*(k_i - 1) +1 : ndims*k_i), iq] .+= tmp_mat 
-                    #matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1) + 1 : ndims*k_i), iq] .*= exp_factor
                 end
             end
         end
@@ -343,18 +293,14 @@ end
         matrix_q :: Array{Complex{T}, 3},
         q :: Matrix{T},
         itau :: Vector{Int},
-        R_lat :: Matrix{T},
-        tau :: Matrix{T})
+        R_lat :: Matrix{T})
 
 Fourier transform a matrix from q space into r space
-
-The phase-factor convention (gauge) includes the atomic positions
-``\vec\tau_a`` inside the primitive cell (see [`matrix_r2q!`](@ref)):
 
 ``
 \displaystyle
 \Phi_{ab} = \frac{1}{N_q} \sum_{\vec q}
-M_{ab}(\vec  q) e^{2i\pi \vec q\cdot[(\vec R(a) + \vec\tau_a) - (\vec R(b) + \vec\tau_b)]}
+M_{ab}(\vec  q) e^{2i\pi \vec q\cdot[\vec R(a) - \vec R(b)]}
 ``
 
 Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space matrix.
@@ -365,7 +311,7 @@ Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space 
 
 - matrix_r : (3*nat_sc, 3*nat)
     The target matrix in real space (supercell). If the second dimension is 3nat_sc, we also apply the translations
-- matrix_q : (3nat, 3nat, nq)
+- matrix_q : (3nat, 3nat, nq) 
     The original matrix in Fourier space.
 - q_tot : (3, nq)
     The list of q vectors
@@ -373,20 +319,16 @@ Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space 
     The correspondance for each atom in the supercell with the atom in the primitive cell.
 - R_lat : (3, nat_sc)
     The origin coordinates of the supercell in which the corresponding atom is
-- tau : (3, nat)
-    The positions of the atoms inside the primitive cell
-    (same units and coordinates as `R_lat`).
 - translations : Vector{Vector{Int}}
     The itau correspondance for each translational vector. Its size must be equal to the number of q point and
-    contain all possible translations. This can be obtained from the `get_translations` subroutine.
+    contain all possible translations. This can be obtained from the `get_translations` subroutine. 
 """
 function matrix_q2r!(
         matrix_r :: AbstractMatrix{T},
         matrix_q :: Array{Complex{T}, 3},
         q :: Matrix{T},
         itau :: Vector{I},
-        R_lat :: Matrix{T},
-        tau :: Matrix{T}; translations :: Union{Nothing, AbstractVector} = nothing, buffer = default_buffer()) where {T, I <: Integer}
+        R_lat :: Matrix{T}; translations :: Union{Nothing, AbstractVector} = nothing, buffer = default_buffer()) where {T, I <: Integer}
     nq = size(q, 2)
     ndims = size(q, 1)
     nat_sc = size(matrix_r, 1) ÷ ndims
@@ -420,16 +362,13 @@ function matrix_q2r!(
 
             for k_i in 1:nat
                 @simd for h_i in 1:nat_sc
-                    h_i_uc = itau[h_i]
-
                     @views ΔR⃗ .= R_lat[:, k_i]
-                    @views ΔR⃗ .+= tau[:, itau[k_i]]
                     @views ΔR⃗ .-= R_lat[:, h_i]
-                    @views ΔR⃗ .-= tau[:, h_i_uc]
                     @views q_dot_R = ΔR⃗' * q[:, iq]
 
+                    h_i_uc = itau[h_i]
+
                     exp_factor = exp(phase_i * q_dot_R)
-                    #TODO: createa temporaney structure before adding the exponential otherwise itis not real
                     @views tmp_matrix .= matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1)+1 : ndims*k_i), iq]
                     tmp_matrix .*= exp_factor / nq
                     @views matrix_r[(ndims*(h_i - 1) +1 : ndims * h_i), (ndims*(k_i - 1) + 1 : ndims*k_i)] .+= real(tmp_matrix)
@@ -502,7 +441,7 @@ An example of usage after the fourier transform
 # Perform the fourier transform in q space
 # Here, we assume that R_lat and q_points are expressed in crystal coordinates.
 # Otherwise, just pass the identity to the cell below.
-vector_r2q!(positions_q, positions_r, q_points, itau, R_lat, tau)
+vector_r2q!(positions_q, positions_r, q_points, itau, R_lat)
 
 # Remove the translations
 shift_position_origin!(positions_q, cell, R_lat)
@@ -570,4 +509,470 @@ function shift_position_origin!(r_vectors :: AbstractMatrix{U}, cell :: Abstract
     r_vectors
 end
 
+
+# =====================================================================
+#  Tau-gauge (atomic-position phase) Fourier transforms
+#
+#  These functions use the phase convention exp(±2πi q·(R + τ_a))
+#  where τ_a are the atomic positions in the primitive cell.
+#  This gauge makes q-space quantities smooth in q, suited for
+#  interpolation, at the cost of losing BZ periodicity.
+# =====================================================================
+
+@doc raw"""
+    vector_r2q_tau!(
+        v_q :: AbstractArray{Complex{T}, 3},
+        v_sc :: AbstractMatrix{T},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T},
+        tau :: Matrix{T}
+    ) where {T <: AbstractFloat, I <: Integer}
+    vector_r2q_tau!(v_q :: AbstractArray{Complex{T}, 2},
+        v_sc :: AbstractVector{T},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T},
+        tau :: Matrix{T}
+    ) where {T <: AbstractFloat, I <: Integer}
+
+
+Fourier transform a vector from real space and q space.
+
+The phase-factor convention (gauge) includes the atomic positions ``\vec \tau_a``
+inside the primitive cell:
+
+``
+\displaystyle
+v_a(\vec q) = \frac{1}{\sqrt{N_q}} \sum_{R} e^{-i 2\pi \vec q\cdot (\vec R + \vec\tau_a)} v_a(\vec R)
+``
+
+where ``\vec R + \vec \tau_a`` is the equilibrium position of the atom in the supercell.
+This gauge (in contrast with the one employing only ``\vec R``) makes the
+Fourier transformed quantities smooth functions of ``\vec q``, which is much
+better suited for interpolation in q space.
+Note that, as a consequence, quantities in this gauge are not periodic in the
+Brillouin zone: ``v_a(\vec q + \vec G) = e^{-2i\pi \vec G\cdot \vec\tau_a} v_a(\vec q)``.
+
+It works both on a single vector and on a series of vector.
+NOTE: In the latter case, the number
+of configurations must be in the first column.
+This is not standard,
+but implemented in this way for performance reasons as
+it is the most convenient memory rapresentation for vectorizing the
+average calculation.
+
+Notably, this convention introduces two main properties:
+
+The ``\Gamma`` value of the fourier transform is not the average over the supercell of the same
+quantity. If you want to obtain the average, you must divide by √nq (the number of q-points).
+
+If the coordinates passed as `v_sc` are absolute values of positions,
+then the ``\Gamma`` value of the fourier transform will be shifted by a total translation
+proportional to the average of the equilibrium positions.
+
+To avoid this behaviour (which is wrong), you can use the option `absolute_positions`,
+which automatically rescales the `v_sc` to be displacements with respect to the
+equilibrium positions ``\vec R + \vec\tau_a``.
+Indeed, in this case, `R_lat`, `tau` and `v_sc` must be of the same
+units, and coordinate types (you cannot mix crystalline and cartesian).
+
+
+## Parameters
+
+- `v_q` : (n_configs, 3nat, nq)
+    The target vector in Fourier space. Optionally, n_configs could be omitted if transforming only 1 vector
+- `v_sc` : (n_configs, 3*nat_sc)
+    The original vector in real space. Optionally, n_configs could be omitted if transforming only 1 vector
+- `q` : (3, nq)
+    The list of q vectors
+- `itau` : (nat_sc)
+    The correspondance for each atom in the supercell with the atom in the primitive cell.
+- `R_lat` : (3, nat_sc)
+    The origin coordinates of the supercell in which the atom is
+- `tau` : (3, nat)
+    The positions of the atoms inside the primitive cell.
+    Must be expressed in the same units and coordinates as `R_lat`
+    (and dual to `q`, so that ``\vec q \cdot (\vec R + \vec\tau)`` is in units of 2π).
+- `absolute_positions` : Bool
+    If true [default false], removes from v_sc the equilibrium positions `R_lat + tau`.
+"""
+function vector_r2q_tau!(
+        v_q :: AbstractArray{Complex{T}, 3},
+        v_sc :: AbstractMatrix{T},
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T},
+        tau :: AbstractMatrix{T};
+        absolute_positions :: Bool = false
+    ) where {T <: AbstractFloat, I <: Integer}
+
+    nq = size(q, 2)
+    n_random = size(v_sc, 1)
+    nat_sc = size(v_sc, 2) ÷ 3
+    nat = size(v_q, 2)
+
+    v_q .= 0
+
+
+    for jq ∈ 1:nq
+        for k ∈ 1:nat_sc
+            k_uc = itau[k]
+            @views q_dot_R = q[:, jq]' * R_lat[:, k] + q[:, jq]' * tau[:, k_uc]
+            exp_value = exp(- 1im * 2π * q_dot_R)
+
+            for α in 1:3
+                index_sc = 3 * (k - 1) + α
+                index_uc = 3 * (k_uc - 1) + α
+                @simd for i ∈ 1:n_random
+                    # Remove the equilibrium position if needed
+                    δ_value = v_sc[i, index_sc]
+                    if absolute_positions
+                        δ_value -= R_lat[α, k] + tau[α, k_uc]
+                    end
+
+                    v_q[i, index_uc, jq] += exp_value * δ_value
+                end
+            end
+        end
+    end
+
+    v_q ./= √nq
+end
+function vector_r2q_tau!(
+        v_q :: AbstractMatrix{Complex{T}},
+        v_sc :: AbstractVector{T},
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T},
+        tau :: AbstractMatrix{T};
+        kwargs...
+    ) where {T <: AbstractFloat, I <: Integer}
+
+    vector_r2q_tau!(reshape(v_q, 1, size(v_q)...), reshape(v_sc, 1, size(v_sc)...), q, itau, R_lat, tau; kwargs...)
+end
+
+
+@doc raw"""
+    vector_q2r_tau!(
+        v_sc :: AbstractMatrix{T},
+        v_q :: AbstractArray{Complex{T}, 3},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T},
+        tau :: Matrix{T};
+        absolute_positions :: Bool = false
+        ) where {T <: AbstractFloat, I <: Integer}
+    function vector_q2r_tau!(
+        v_sc :: AbstractVector{T},
+        v_q :: AbstractMatrix{Complex{T}},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T},
+        tau :: Matrix{T};
+        absolute_positions :: Bool = false
+    ) where {T <: AbstractFloat, I <: Integer}
+
+
+Fourier transform a vector from q space to real space.
+
+The phase-factor convention (gauge) includes the atomic positions ``\vec\tau_a``
+inside the primitive cell (see [`vector_r2q_tau!`](@ref)):
+
+``
+\displaystyle
+v_a(\vec R) = \frac{1}{\sqrt{N_q}} \sum_{\vec q} e^{+i 2\pi \vec q\cdot (\vec R + \vec \tau_a)} v_a(\vec q)
+``
+
+It can be applied both to a single vector and in an ensemble.
+NOTE: In the latter case, the configurations must be stored as the first index.
+This choice is made for performance reason in computing averages (exploiting vectorization).
+
+
+## Parameters
+
+
+- `v_sc` : (n_configs, 3*nat_sc)
+    The target vector in real space. Optionally, n_configs can be omitted
+- `v_q` : (n_configs, nq, 3*nat)
+    The original vector in Fourier space. Optionally, n_configs can be omitted
+- `q` : (3, nq)
+    The list of q vectors
+- `itau : (nat_sc)`
+    The correspondance for each atom in the supercell with the atom in the primitive cell.
+- `R_lat : (3, nat_sc)`
+    The origin coordinates of the supercell in which the atom is
+- `tau : (3, nat)`
+    The positions of the atoms inside the primitive cell
+    (same units and coordinates as `R_lat`).
+- `absolute_positions` : Bool
+    If true, add the equilibrium positions `R_lat + tau` to the transformed v_sc
+"""
+function vector_q2r_tau!(
+        v_sc :: AbstractMatrix{T},
+        v_q :: AbstractArray{Complex{T}, 3},
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T},
+        tau :: AbstractMatrix{T};
+        absolute_positions :: Bool = false
+    ) where {T <: AbstractFloat, I <: Integer}
+
+    nq = size(q, 2)
+    n_random = size(v_sc, 1)
+    nat_sc = size(v_sc, 2) ÷ 3
+    tmp_vector = zeros(Complex{T}, (n_random, 3*nat_sc))
+
+    v_sc .= 0
+
+    for jq ∈ 1:nq
+        for k ∈ 1:nat_sc
+            k_uc = itau[k]
+            @views q_dot_R = q[:, jq]' * R_lat[:, k] + q[:, jq]' * tau[:, k_uc]
+            exp_value = exp(1im * 2π * q_dot_R)
+
+            for α in 1:3
+                index_sc = 3 * (k - 1) + α
+                index_uc = 3 * (k_uc - 1) + α
+                @simd for i ∈ 1:n_random
+                    tmp_vector[i, index_sc] += exp_value * v_q[i, index_uc, jq]
+                end
+            end
+        end
+    end
+
+    v_sc .+= real(tmp_vector)
+    v_sc ./= √(nq)
+
+    # Add the equilibrium positions (unscaled) if requested
+    if absolute_positions
+        for h in 1:nat_sc
+            for k in 1:3
+                δvalue = R_lat[k, h] + tau[k, itau[h]]
+                index = 3*(h-1) + k
+                v_sc[:, index] .+= δvalue
+            end
+        end
+    end
+end
+
+function vector_q2r_tau!(
+        v_sc :: AbstractVector{T},
+        v_q :: AbstractMatrix{Complex{T}},
+        q :: AbstractMatrix{T},
+        itau :: AbstractVector{I},
+        R_lat :: AbstractMatrix{T},
+        tau :: AbstractMatrix{T};
+        kwargs...
+    ) where {T <: AbstractFloat, I <: Integer}
+
+    vector_q2r_tau!(reshape(v_sc, 1, size(v_sc)...), reshape(v_q, 1, size(v_q)...), q, itau, R_lat, tau; kwargs...)
+end
+
+
+@doc raw"""
+    matrix_r2q_tau!(
+        matrix_q :: Array{Complex{T}, 3},
+        matrix_r :: AbstractMatrix{T},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T},
+        tau :: Matrix{T})
+
+Fourier transform a matrix from real to q space
+
+The phase-factor convention (gauge) includes the atomic positions
+``\vec\tau_a`` inside the primitive cell:
+
+```math
+M_{ab}(\vec q) = \sum_{\vec R} e^{2\pi i \vec q\cdot (\vec R + \vec\tau_a - \vec\tau_b)}\Phi_{a + \vec R;b}
+```
+
+Where ``\Phi_{ab}`` is the real space matrix, the ``a+\vec R`` indicates the corresponding atom in the supercell displaced by ``\vec R``.
+The phase is thus computed from the difference of the equilibrium positions of the
+two atoms, ``(\vec R_a + \vec\tau_a) - (\vec R_b + \vec\tau_b)``.
+This gauge makes ``M_{ab}(\vec q)`` a smooth function of ``\vec q``, better
+suited for the interpolation. As a consequence, the matrix is not periodic in
+the Brillouin zone:
+``M_{ab}(\vec q + \vec G) = e^{2i\pi \vec G\cdot(\vec\tau_a - \vec\tau_b)} M_{ab}(\vec q)``.
+
+
+## Parameters
+
+- `matrix_q` : (3nat, 3nat, nq)
+    The target matrix in Fourier space.
+- `matrix_r` : (3*nat_sc, 3*nat)
+    The original matrix in real space (supercell)
+- `q_tot` : (3, nq)
+    The list of q vectors
+- `itau` : (nat_sc)
+    The correspondance for each atom in the supercell with the atom in the primitive cell.
+- `R_lat` : (3, nat_sc)
+    The origin coordinates of the supercell in which the corresponding atom is
+- `tau` : (3, nat)
+    The positions of the atoms inside the primitive cell
+    (same units and coordinates as `R_lat`).
+"""
+function matrix_r2q_tau!(
+        matrix_q :: AbstractArray{Complex{T}, 3},
+        matrix_r :: AbstractMatrix{T},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T},
+        tau :: Matrix{T}; buffer = default_buffer()) where {T, I<: Integer}
+    nq = size(q, 2)
+    ndims = size(q, 1)
+    nat_sc = size(matrix_r, 1) ÷ ndims
+    nat = size(matrix_q, 1) ÷ ndims
+
+    matrix_q .= T(0.0)
+
+    @no_escape buffer begin
+        ΔR⃗ = @alloc(T, ndims)
+        tmp_mat = @alloc(Complex{T}, ndims, ndims)
+
+        phase_i = Complex{T}(-2π * 1im)
+
+        for iq in 1:nq
+            for k_i in 1:nat
+                @simd for h_i in 1:nat_sc
+                    h_i_uc = itau[h_i]
+
+                    @views ΔR⃗ .= R_lat[:, k_i]
+                    @views ΔR⃗ .+= tau[:, itau[k_i]]
+                    @views ΔR⃗ .-= R_lat[:, h_i]
+                    @views ΔR⃗ .-= tau[:, h_i_uc]
+                    @views q_dot_R = ΔR⃗' * q[:, iq]
+
+                    exp_factor = exp(phase_i * q_dot_R)
+                    @views tmp_mat .= matrix_r[(ndims*(h_i - 1) + 1 : ndims * h_i), (ndims*(k_i - 1) +1 : ndims*k_i)]
+                    tmp_mat .*= exp_factor 
+
+                    @views matrix_q[(ndims*(h_i_uc - 1) + 1 : ndims * h_i_uc), (ndims*(k_i - 1) +1 : ndims*k_i), iq] .+= tmp_mat 
+                end
+            end
+        end
+        nothing
+    end
+end
+
+@doc raw"""
+    matrix_q2r_tau!(
+        matrix_r :: AbstractMatrix{T},
+        matrix_q :: Array{Complex{T}, 3},
+        q :: Matrix{T},
+        itau :: Vector{Int},
+        R_lat :: Matrix{T},
+        tau :: Matrix{T})
+
+Fourier transform a matrix from q space into r space
+
+The phase-factor convention (gauge) includes the atomic positions
+``\vec\tau_a`` inside the primitive cell (see [`matrix_r2q_tau!`](@ref)):
+
+``
+\displaystyle
+\Phi_{ab} = \frac{1}{N_q} \sum_{\vec q}
+M_{ab}(\vec  q) e^{2i\pi \vec q\cdot[(\vec R(a) + \vec\tau_a) - (\vec R(b) + \vec\tau_b)]}
+``
+
+Where ``\Phi_{ab}`` is the real space matrix, ``M_{ab}(\vec q)`` is the q space matrix.
+
+
+## Parameters
+
+
+- matrix_r : (3*nat_sc, 3*nat)
+    The target matrix in real space (supercell). If the second dimension is 3nat_sc, we also apply the translations
+- matrix_q : (3nat, 3nat, nq)
+    The original matrix in Fourier space.
+- q_tot : (3, nq)
+    The list of q vectors
+- itau : (nat_sc)
+    The correspondance for each atom in the supercell with the atom in the primitive cell.
+- R_lat : (3, nat_sc)
+    The origin coordinates of the supercell in which the corresponding atom is
+- tau : (3, nat)
+    The positions of the atoms inside the primitive cell
+    (same units and coordinates as `R_lat`).
+- translations : Vector{Vector{Int}}
+    The itau correspondance for each translational vector. Its size must be equal to the number of q point and
+    contain all possible translations. This can be obtained from the `get_translations` subroutine.
+"""
+function matrix_q2r_tau!(
+        matrix_r :: AbstractMatrix{T},
+        matrix_q :: Array{Complex{T}, 3},
+        q :: Matrix{T},
+        itau :: Vector{I},
+        R_lat :: Matrix{T},
+        tau :: Matrix{T}; translations :: Union{Nothing, AbstractVector} = nothing, buffer = default_buffer()) where {T, I <: Integer}
+    nq = size(q, 2)
+    ndims = size(q, 1)
+    nat_sc = size(matrix_r, 1) ÷ ndims
+    nat = size(matrix_q, 1) ÷ ndims
+
+    matrix_r .= T(0.0) 
+
+    apply_translations = false
+    if size(matrix_r, 2) > nat*ndims
+        apply_translations = true
+        if size(matrix_r, 2) != nat_sc*ndims
+            error("Error, dimension mismatch in matrix_r: $(size(matrix_r))")
+        end
+
+        # Check if the translations are provided
+        if translations == nothing
+            error("Error in matrix_q2r_tau! : if the size of the matrix_r is a square, then it is required to provide the translations.")
+        end
+
+        # Check if the translations have the correct lenght
+        @assert length(translations) == nq "Error, the number of translations ($(length(translations))) must be equal with the number of q-points ($nq)"
+    end
+
+    @no_escape buffer begin
+        ΔR⃗ = @alloc(T, ndims)
+
+        phase_i = Complex{T}(2π * 1im)
+        tmp_matrix = @alloc(Complex{T}, ndims, ndims)
+
+        for iq in 1:nq
+
+            for k_i in 1:nat
+                @simd for h_i in 1:nat_sc
+                    h_i_uc = itau[h_i]
+
+                    @views ΔR⃗ .= R_lat[:, k_i]
+                    @views ΔR⃗ .+= tau[:, itau[k_i]]
+                    @views ΔR⃗ .-= R_lat[:, h_i]
+                    @views ΔR⃗ .-= tau[:, h_i_uc]
+                    @views q_dot_R = ΔR⃗' * q[:, iq]
+
+                    exp_factor = exp(phase_i * q_dot_R)
+                    @views tmp_matrix .= matrix_q[(ndims*(h_i_uc - 1) +1 : ndims * h_i_uc), (ndims*(k_i - 1)+1 : ndims*k_i), iq]
+                    tmp_matrix .*= exp_factor / nq
+                    @views matrix_r[(ndims*(h_i - 1) +1 : ndims * h_i), (ndims*(k_i - 1) + 1 : ndims*k_i)] .+= real(tmp_matrix)
+                end
+            end
+        end
+
+        # Check if we need to apply the translations
+        if apply_translations
+            new_tmp_matrix = @alloc(T, nat_sc*ndims, nat_sc*ndims)
+            new_tmp_matrix .= T(0)
+            for trans in translations
+                for i in 1:nat_sc
+                    i_t = trans[i]
+                    for j in 1:nat_sc
+                        j_t = trans[j]
+                        @views new_tmp_matrix[(ndims*(j-1)+1:ndims*j), (ndims*(i-1)+1:ndims*i)] .+=  
+                            matrix_r[(ndims*(j_t-1)+1:ndims*j_t), (ndims*(i_t-1)+1:ndims*i_t)]
+                    end
+                end
+            end
+
+            matrix_r .= new_tmp_matrix
+        end
+        nothing
+    end
+end
 

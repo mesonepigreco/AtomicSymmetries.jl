@@ -96,7 +96,7 @@ function test_gauge_phase_relation(; verbose=false)
                                                s.super_cell, s.super_types)
 
     phi_q = zeros(ComplexF64, ndims*nat, ndims*nat, nq)
-    matrix_r2q!(phi_q, fc, s.q_vec, s.super_itau, s.R_lat, s.positions)
+    matrix_r2q_tau!(phi_q, fc, s.q_vec, s.super_itau, s.R_lat, s.positions)
 
     # Reference: lattice-gauge Fourier transform computed by hand
     phi_q_lattice = zeros(ComplexF64, ndims*nat, ndims*nat, nq)
@@ -140,11 +140,11 @@ function test_gauge_roundtrip(; verbose=false)
     phi_back = zeros(Float64, ndims*nat_sc, ndims*nat_sc)
     phi_q_bis = similar(phi_q)
 
-    matrix_r2q!(phi_q, fc, s.q_vec, s.super_itau, s.R_lat, s.positions)
-    matrix_q2r!(phi_back, phi_q, s.q_vec, s.super_itau, s.R_lat, s.positions; translations=translations)
+    matrix_r2q_tau!(phi_q, fc, s.q_vec, s.super_itau, s.R_lat, s.positions)
+    matrix_q2r_tau!(phi_back, phi_q, s.q_vec, s.super_itau, s.R_lat, s.positions; translations=translations)
     @test isapprox(phi_back, fc; atol=1e-10)
 
-    matrix_r2q!(phi_q_bis, phi_back, s.q_vec, s.super_itau, s.R_lat, s.positions)
+    matrix_r2q_tau!(phi_q_bis, phi_back, s.q_vec, s.super_itau, s.R_lat, s.positions)
     @test isapprox(phi_q_bis, phi_q; atol=1e-10)
 
     # Vector roundtrip
@@ -152,8 +152,8 @@ function test_gauge_roundtrip(; verbose=false)
     u = randn(Float64, ndims * nat_sc)
     u_q = zeros(ComplexF64, ndims*nat, nq)
     u_back = zeros(Float64, ndims * nat_sc)
-    vector_r2q!(u_q, u, s.q_vec, s.super_itau, s.R_lat, s.positions)
-    vector_q2r!(u_back, u_q, s.q_vec, s.super_itau, s.R_lat, s.positions)
+    vector_r2q_tau!(u_q, u, s.q_vec, s.super_itau, s.R_lat, s.positions)
+    vector_q2r_tau!(u_back, u_q, s.q_vec, s.super_itau, s.R_lat, s.positions)
     @test isapprox(u_back, u; atol=1e-10)
 
     # absolute_positions: transforming (equilibrium + displacement) with
@@ -165,12 +165,12 @@ function test_gauge_roundtrip(; verbose=false)
         @views u_abs[ndims*(k-1)+1:ndims*k] .+= s.R_lat[:, k] .+ s.positions[:, s.super_itau[k]]
     end
     u_q_abs = zeros(ComplexF64, ndims*nat, nq)
-    vector_r2q!(u_q_abs, u_abs, s.q_vec, s.super_itau, s.R_lat, s.positions; absolute_positions=true)
+    vector_r2q_tau!(u_q_abs, u_abs, s.q_vec, s.super_itau, s.R_lat, s.positions; absolute_positions=true)
     @test isapprox(u_q_abs, u_q; atol=1e-10)
 
     # ... and the backward transform restores the absolute positions
     u_back_abs = zeros(Float64, ndims * nat_sc)
-    vector_q2r!(u_back_abs, u_q_abs, s.q_vec, s.super_itau, s.R_lat, s.positions; absolute_positions=true)
+    vector_q2r_tau!(u_back_abs, u_q_abs, s.q_vec, s.super_itau, s.R_lat, s.positions; absolute_positions=true)
     @test isapprox(u_back_abs, u_abs; atol=1e-10)
 end
 
@@ -196,7 +196,7 @@ function test_gauge_symmetry_application(; verbose=false)
     @test n_sym == 48
 
     phi_q = zeros(ComplexF64, ndims*nat, ndims*nat, nq)
-    matrix_r2q!(phi_q, fc, s.q_vec, s.super_itau, s.R_lat, s.positions)
+    matrix_r2q_tau!(phi_q, fc, s.q_vec, s.super_itau, s.R_lat, s.positions)
 
     irt_q = zeros(Int, nq)
     irt_sc = zeros(Int, nat_sc)
@@ -223,7 +223,7 @@ function test_gauge_symmetry_application(; verbose=false)
 
         # q-space application
         phi_q_sym .= 0
-        AtomicSymmetries.apply_symmetry_matrixq!(phi_q_sym, phi_q, sym_mat,
+        AtomicSymmetries.apply_symmetry_matrixq_tau!(phi_q_sym, phi_q, sym_mat,
                                                  uc_group.irt[i_sym], irt_q,
                                                  s.positions, s.q_vec)
 
@@ -235,7 +235,7 @@ function test_gauge_symmetry_application(; verbose=false)
         apply_translations!(fc_sym, translations)
 
         phi_q_ref .= 0
-        matrix_r2q!(phi_q_ref, fc_sym, s.q_vec, s.super_itau, s.R_lat, s.positions)
+        matrix_r2q_tau!(phi_q_ref, fc_sym, s.q_vec, s.super_itau, s.R_lat, s.positions)
 
         @test isapprox(phi_q_sym, phi_q_ref; atol=1e-8)
     end
@@ -247,15 +247,15 @@ function test_gauge_symmetry_application(; verbose=false)
     end
 
     # Full symmetrization: q space vs real space
-    q_symmetries = SymmetriesQSpace(uc_group, s.q_vec, s.positions)
+    q_symmetries = SymmetriesQSpaceTau(uc_group, s.q_vec, s.positions)
     phi_q_sym .= 0
-    symmetrize_matrix_q!(phi_q_sym, phi_q, q_symmetries)
+    symmetrize_matrix_q_tau!(phi_q_sym, phi_q, q_symmetries)
 
     sc_group = get_symmetry_group_from_spglib(s.super_positions, s.super_cell, s.super_types)
     fc_sym .= fc
     sc_group.symmetrize_fc!(fc_sym)
     phi_q_ref .= 0
-    matrix_r2q!(phi_q_ref, fc_sym, s.q_vec, s.super_itau, s.R_lat, s.positions)
+    matrix_r2q_tau!(phi_q_ref, fc_sym, s.q_vec, s.super_itau, s.R_lat, s.positions)
 
     @test isapprox(phi_q_sym, phi_q_ref; atol=1e-8)
 
@@ -263,10 +263,10 @@ function test_gauge_symmetry_application(; verbose=false)
     # lattice-gauge symmetrization on a new-gauge matrix) must give a
     # different (wrong) result: the folding phases really matter here.
     fake_positions = zeros(Float64, ndims, nat)
-    fake_q_symmetries = SymmetriesQSpace(uc_group, s.q_vec, fake_positions)
+    fake_q_symmetries = SymmetriesQSpaceTau(uc_group, s.q_vec, fake_positions)
     phi_q_wrong = similar(phi_q)
     phi_q_wrong .= 0
-    symmetrize_matrix_q!(phi_q_wrong, phi_q, fake_q_symmetries)
+    symmetrize_matrix_q_tau!(phi_q_wrong, phi_q, fake_q_symmetries)
     @test maximum(abs.(phi_q_wrong .- phi_q_ref)) > 1e-6
 end
 
@@ -286,7 +286,7 @@ function test_gauge_vector_symmetry(; verbose=false)
     Random.seed!(1213)
     u = randn(Float64, ndims * nat_sc)
     u_q = zeros(ComplexF64, ndims*nat, nq)
-    vector_r2q!(u_q, u, s.q_vec, s.super_itau, s.R_lat, s.positions)
+    vector_r2q_tau!(u_q, u, s.q_vec, s.super_itau, s.R_lat, s.positions)
 
     irt_q = zeros(Int, nq)
     irt_sc = zeros(Int, nat_sc)
@@ -301,7 +301,7 @@ function test_gauge_vector_symmetry(; verbose=false)
 
         # q-space application (with all the gauge phases)
         u_q_sym .= 0
-        AtomicSymmetries.apply_symmetry_vectorq!(u_q_sym, u_q, sym_mat,
+        AtomicSymmetries.apply_symmetry_vectorq_tau!(u_q_sym, u_q, sym_mat,
                                                  uc_group.irt[i_sym], irt_q;
                                                  positions=s.positions,
                                                  q_points=s.q_vec,
@@ -314,7 +314,7 @@ function test_gauge_vector_symmetry(; verbose=false)
         AtomicSymmetries.apply_sym_centroid!(u_sym, u, sym_mat, ndims, irt_sc)
 
         u_q_ref .= 0
-        vector_r2q!(u_q_ref, u_sym, s.q_vec, s.super_itau, s.R_lat, s.positions)
+        vector_r2q_tau!(u_q_ref, u_sym, s.q_vec, s.super_itau, s.R_lat, s.positions)
 
         @test isapprox(u_q_sym, u_q_ref; atol=1e-8)
     end
@@ -323,7 +323,7 @@ end
 
 # The Fourier transform of a real, symmetric, translation-invariant
 # force-constant matrix must already satisfy hermitianity + time reversal:
-# impose_hermitianity_q! must leave it unchanged (and be idempotent).
+# impose_hermitianity_q_tau! must leave it unchanged (and be idempotent).
 function test_gauge_hermitianity(; verbose=false)
     s = get_cscl_supercell()
     ndims = 3
@@ -334,22 +334,22 @@ function test_gauge_hermitianity(; verbose=false)
                                                s.super_cell, s.super_types)
 
     uc_group = get_symmetry_group_from_spglib(s.positions, s.cell, s.types)
-    q_symmetries = SymmetriesQSpace(uc_group, s.q_vec, s.positions)
+    q_symmetries = SymmetriesQSpaceTau(uc_group, s.q_vec, s.positions)
 
     phi_q = zeros(ComplexF64, ndims*nat, ndims*nat, nq)
-    matrix_r2q!(phi_q, fc, s.q_vec, s.super_itau, s.R_lat, s.positions)
+    matrix_r2q_tau!(phi_q, fc, s.q_vec, s.super_itau, s.R_lat, s.positions)
 
     phi_q_fixed = copy(phi_q)
-    impose_hermitianity_q!(phi_q_fixed, q_symmetries)
+    impose_hermitianity_q_tau!(phi_q_fixed, q_symmetries)
     @test isapprox(phi_q_fixed, phi_q; atol=1e-10)
 
     # Idempotency on a generic (random) matrix
     Random.seed!(1415)
     random_q = randn(ComplexF64, ndims*nat, ndims*nat, nq)
     once = copy(random_q)
-    impose_hermitianity_q!(once, q_symmetries)
+    impose_hermitianity_q_tau!(once, q_symmetries)
     twice = copy(once)
-    impose_hermitianity_q!(twice, q_symmetries)
+    impose_hermitianity_q_tau!(twice, q_symmetries)
     @test isapprox(twice, once; atol=1e-10)
 
     # Negative control: without the positions, the folding phases are missed

@@ -268,9 +268,8 @@ function CosetSymmetryGroup(original_group :: SymmetriesQSpace{T}, perturbation_
 
     # Wrap both subgroup and cosets in SymmetriesQSpace to compute irt_q
     q_points = original_group.q_points
-    positions = original_group.positions
-    subgroup_q = SymmetriesQSpace(real_coset.subgroup, q_points, positions; buffer=buffer)
-    cosets_q = SymmetriesQSpace(real_coset.cosets, q_points, positions; buffer=buffer)
+    subgroup_q = SymmetriesQSpace(real_coset.subgroup, q_points; buffer=buffer)
+    cosets_q = SymmetriesQSpace(real_coset.cosets, q_points; buffer=buffer)
 
     return CosetSymmetryGroup{SymmetriesQSpace{T}}(subgroup_q, cosets_q)
 
