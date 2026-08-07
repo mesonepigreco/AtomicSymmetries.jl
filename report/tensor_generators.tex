@@ -1,0 +1,810 @@
+\documentclass[twocolumn,amsmath,amssymb,aps,prb,10pt,floatfix]{revtex4-2}
+
+\usepackage{graphicx}
+\usepackage{dcolumn}
+\usepackage{bm}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{physics}
+\usepackage{booktabs}
+\usepackage{xcolor}
+
+\newcommand{\vT}{\mathbf{T}}
+\newcommand{\vC}{\mathbf{C}}
+\newcommand{\valpha}{\boldsymbol{\alpha}}
+\newcommand{\vbeta}{\boldsymbol{\beta}}
+
+\begin{document}
+
+\title{Symmetry-Independent Basis Construction for High-Rank Tensors\\via Orbit-Stabilizer Decomposition}
+
+% TODO: replace with actual author(s)
+\author{Author}
+\affiliation{Affiliation}
+
+\date{\today}
+
+\begin{abstract}
+The characterization of symmetry-allowed physical properties in crystalline solids requires constructing a basis for the invariant subspace of tensors of rank $k$ under the crystal's space group.
+Standard methods that build the full $(dN)^k$-dimensional tensor and apply global Gram-Schmidt orthogonalization suffer from a combinatorial explosion in memory, reaching terabyte scales for moderate supercells at $k \geq 3$.
+We present a rigorous mathematical framework and two complementary algorithms based on the orbit-stabilizer theorem to construct a complete, orthonormal set of \emph{generators} (basis tensors) for the invariant subspace.
+Method~I performs global symmetrization of seed tensors followed by Gram-Schmidt orthogonalization, using a compact block representation to avoid materializing the full tensor during the projection step.
+Method~II decomposes the problem by orbits of atom tuples: for each orbit representative, the local Cartesian block is projected onto the invariant subspace of the corresponding Little Group (stabilizer) via the Reynolds operator, and the result is propagated to the remaining orbit members by the coset symmetries.
+We derive the projection operators, analyze scaling, describe the compact \texttt{Generator} data structure, and compare with existing approaches including the eigentensor method of \textsc{hiphive} and the irreducible-representation approach of \textsc{tdep}.
+The algorithms are implemented in the Julia package \textsc{AtomicSymmetries.jl} and validated against direct symmetrization for systems up to $4\times4\times4$ FCC supercells.
+\end{abstract}
+
+\maketitle
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+\label{sec:intro}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+Many physical properties of crystalline materials are described by tensors of rank $k$.
+The harmonic interatomic force constants (IFCs) form a rank-2 tensor; anharmonic corrections at order $k$ are described by rank-$k$ IFCs~\cite{BornHuang1954,Leibfried1961}.
+In a supercell with $N$ atoms and $d=3$ spatial dimensions, the number of tensor elements is $(dN)^k$.
+For $N=64$ (a $4\times4\times4$ FCC supercell) and $k=3$, this corresponds to $\sim 1.2 \times 10^7$ elements, and for $k=4$ the count reaches $\sim 2.2 \times 10^9$.
+
+The crystal's space group $G$ constrains these tensors, reducing the number of symmetry-independent parameters to a far smaller number of \emph{generators} (basis tensors for the invariant subspace).
+Several codes exploit this reduction.
+Phonopy and Phono3py~\cite{Togo2015phonopy,Togo2023phonopy,Togo2015phono3py,Togo2023implementation} use finite-displacement methods with site-symmetry analysis to reduce the set of required displacements.
+TDEP~\cite{Hellman2011,Hellman2013,Hellman2013cubic,Knoop2024tdep} identifies the irreducible representation of force constants and fits them to molecular-dynamics trajectories.
+The compressive-sensing lattice dynamics (CSLD) approach~\cite{Zhou2019csld} formulates symmetry as linear constraints and uses $L_1$-regularized regression.
+The \textsc{hiphive} package~\cite{Eriksson2019,Fransson2020} employs an orbit decomposition combined with \emph{eigentensors}---an orthonormal basis for the symmetry-allowed force constants at each orbit representative---and scales the approach to high orders via cluster enumeration and regression.
+
+In this work we present a self-contained mathematical framework and two algorithms, implemented in the Julia~\cite{Bezanson2017julia} package \textsc{AtomicSymmetries.jl}, for constructing a complete, orthonormal generator basis.
+Method~I (Sec.~\ref{sec:method1}) is a brute-force approach that symmetrizes seed tensors and applies Gram-Schmidt orthogonalization with a compact block representation.
+Method~II (Sec.~\ref{sec:method2}) leverages the orbit-stabilizer theorem~\cite{Serre1977} to decompose the problem into small, local projections on each orbit representative's Little Group.
+Both methods are exact (up to floating-point precision) and are validated against direct symmetrization for rank 2 and 3.
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Notation and Definitions}
+\label{sec:notation}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+Table~\ref{tab:symbols} collects all symbols used throughout this paper.
+
+\begin{table*}[ht]
+\caption{Symbol definitions.}
+\label{tab:symbols}
+\begin{ruledtabular}
+\begin{tabular}{ll}
+\textbf{Symbol} & \textbf{Definition} \\
+\colrule
+$d$              & Spatial dimension (typically 3) \\
+$N$              & Number of atoms in the (super)cell \\
+$n = dN$         & Number of modes \\
+$k$              & Tensor rank (order) \\
+$G$              & Space group of the crystal \\
+$g = \{S \mid \mathbf{t}\}$ & Space group element (rotation + translation) \\
+$S$              & $d \times d$ rotation matrix (in crystal coords.) \\
+$\sigma_g$       & Atom permutation induced by $g$: $\sigma_g(i)=\mathrm{irt}_g[i]$ \\
+$\sigma_g^{-1}$  & Inverse atom permutation \\
+$\vT$            & Atom $k$-tuple $(i_1,\dots,i_k)$ \\
+$\vC$            & Cartesian $k$-tuple $(\alpha_1,\dots,\alpha_k)$, $\alpha_j\in\{1,\dots,d\}$ \\
+$\Phi$           & Rank-$k$ tensor with elements $\Phi_{\vT}^{\vC}$ \\
+$B^{(\vT)}$      & $d^k$ Cartesian block of $\Phi$ at atom tuple $\vT$ \\
+$\Omega(\vT)$    & Orbit of $\vT$ under $G$ (set of distinct sorted images) \\
+$G_{\vT}$        & Little Group (stabilizer) of $\vT$ in $G$ \\
+$S_k$            & Symmetric group on $k$ elements \\
+$\mathcal{S}_{\vT}$ & Permutation stabilizer of $\vT$ within $S_k$ \\
+$D_{\mathcal{S}}$ & Dimension of $\mathcal{S}_{\vT}$-symmetric Cartesian subspace \\
+$\hat{g}$        & Representation of $g$ on $d^k$ Cartesian blocks [Eq.~\eqref{eq:block_action}] \\
+$\pi_g$          & Cartesian-index permutation induced by $g \in G_{\vT}$ \\
+$P$              & Reynolds operator (projection matrix) [Eq.~\eqref{eq:reynolds}] \\
+$B_{\mathrm{inv}}$ & Invariant block at orbit representative [Eq.~\eqref{eq:block_from_svd}] \\
+$Q_\mu$          & Generator (basis tensor) of the invariant subspace \\
+$c_\mu$          & Expansion coefficient of $\Phi$ along $Q_\mu$ \\
+$A$              & $d \times d$ unit-cell matrix (columns = lattice vectors) \\
+$D_{ij}$         & Minimum-image pairwise distance between atoms $i$ and $j$ \\
+$r_c$            & Distance cutoff for tuple filtering \\
+$n_c$            & Average number of atoms within cutoff distance of a given atom \\
+\end{tabular}
+\end{ruledtabular}
+\end{table*}
+
+A crystal is described by its unit-cell matrix $A \in \mathbb{R}^{d \times d}$ (whose columns are the lattice vectors), $N$ atomic positions $\mathbf{r}_i$ in fractional coordinates, and atomic types $\tau_i$.
+A rank-$k$ tensor $\Phi$ has $k$ atom indices and $k$ Cartesian indices; we write its components as $\Phi_{\vT}^{\vC}$ where $\vT = (i_1,\dots,i_k)$ and $\vC = (\alpha_1,\dots,\alpha_k)$ with $i_j \in \{1,\dots,N\}$ and $\alpha_j \in \{1,\dots,d\}$.
+Equivalently, $\Phi$ can be viewed as a collection of $d^k$-dimensional Cartesian \emph{blocks} $B^{(\vT)}$ indexed by atom tuples.
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Symmetry Transformation of Tensors}
+\label{sec:transformation}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+A space group element $g = \{S \mid \mathbf{t}\} \in G$ acts on the crystal by rotating and translating atomic positions.
+It induces a permutation $\sigma_g$ on the atoms (atom $i$ is mapped to $\sigma_g(i)$) and a rotation $S$ on the Cartesian degrees of freedom.
+In our implementation, symmetry operations are represented in \emph{crystal coordinates}, where $S$ is the rotation matrix expressed in the basis of lattice vectors and $\sigma_g$ is stored as the array $\mathrm{irt}_g$ (shorthand for ``index of the rotated atom''), obtained from Spglib~\cite{Togo2024spglib}.
+
+The action of $g$ on a rank-$k$ tensor $\Phi$ in crystal coordinates is defined component-wise as
+\begin{equation}
+(g \cdot \Phi)^{\beta_1 \cdots \beta_k}_{\sigma_g(i_1),\, \dots,\, \sigma_g(i_k)}
+= \sum_{\alpha_1 \cdots \alpha_k}
+  \left( \prod_{j=1}^{k} S_{\alpha_j \beta_j} \right)
+  \Phi^{\alpha_1 \cdots \alpha_k}_{i_1, \dots, i_k},
+\label{eq:tensor_action}
+\end{equation}
+or equivalently, writing $\vT' = \sigma_g(\vT)$ for the image atom tuple,
+\begin{equation}
+(g \cdot \Phi)^{\vbeta}_{\vT'}
+= \sum_{\valpha} \mathcal{S}^{(g)}_{\valpha \vbeta}\;
+  \Phi^{\valpha}_{\sigma_g^{-1}(\vT')},
+\label{eq:tensor_action_compact}
+\end{equation}
+where the $k$-fold rotation kernel is
+\begin{equation}
+\mathcal{S}^{(g)}_{\valpha \vbeta}
+\equiv \prod_{j=1}^{k} S^{(g)}_{\alpha_j \beta_j}.
+\label{eq:rotation_kernel}
+\end{equation}
+
+\paragraph{Rank-2 special case.}
+For $k=2$, Eq.~\eqref{eq:tensor_action} reduces to the familiar force-constant transformation~\cite{Maradudin1968,BornHuang1954}
+\begin{equation}
+(g \cdot \Phi)_{\sigma_g(a),\, \sigma_g(b)}
+= S^{\mathsf{T}} \, \Phi_{a,b} \, S,
+\label{eq:rank2_action}
+\end{equation}
+where $S^{\mathsf{T}}$ denotes the matrix transpose.
+This matches the convention of the \texttt{apply\_sym\_fc!} function in \textsc{AtomicSymmetries.jl}, where
+$\text{result}[\sigma_g(a), \sigma_g(b)] \mathrel{+}= S^{\mathsf{T}} \cdot \text{fc}[a,b] \cdot S$.
+
+\paragraph{Coordinate conversion.}
+All symmetry operations in Eq.~\eqref{eq:tensor_action} act in crystal coordinates.
+Given a Cartesian tensor $\Phi^{(\mathrm{cart})}$, one first converts to crystal coordinates by contracting the transformation matrix on each index.
+For a rank-$k$ block $B$ at atom tuple $\vT$, the per-index conversion reads
+\begin{equation}
+B^{(\mathrm{cryst})}_{\beta_1 \cdots \beta_k}
+= \sum_{\alpha_1 \cdots \alpha_k}
+\prod_{j=1}^{k} M_{\alpha_j \beta_j}\;
+B^{(\mathrm{cart})}_{\alpha_1 \cdots \alpha_k},
+\label{eq:coord_conversion}
+\end{equation}
+where $M = A$ for Cartesian-to-crystal conversion and $M = A^{-1}$ for the inverse, with $A$ the unit-cell matrix.
+For rank~2, this gives the standard covariant result $\Phi^{(\mathrm{cryst})} = A^{\mathsf{T}} \Phi^{(\mathrm{cart})} A$.
+After symmetrization in crystal coordinates, the result is converted back to Cartesian.
+We emphasize that this is the covariant transformation appropriate for force constants (derivatives of the potential energy), not the contravariant transformation used for position vectors ($\mathbf{r}_{\mathrm{cryst}} = A^{-1} \mathbf{r}_{\mathrm{cart}}$).
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Invariant Subspace and Generators}
+\label{sec:invariant}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+A tensor $\Phi$ is \emph{invariant} under $G$ if $g \cdot \Phi = \Phi$ for every $g \in G$.
+The set of all such tensors forms a linear subspace $\mathcal{V}_G$ of the full tensor space.
+The \emph{symmetrization} (or Reynolds) operator~\cite{Serre1977,Sturmfels2008}
+\begin{equation}
+\bar{\Phi} = \frac{1}{|G|} \sum_{g \in G} g \cdot \Phi
+\label{eq:symmetrization}
+\end{equation}
+is an orthogonal projector onto $\mathcal{V}_G$: it is idempotent ($\overline{\bar\Phi} = \bar\Phi$) and satisfies $g \cdot \bar\Phi = \bar\Phi$ for all $g$.
+
+An orthonormal basis $\{Q_\mu\}_{\mu=1}^{n_{\mathrm{gen}}}$ for $\mathcal{V}_G$ allows any invariant tensor to be decomposed as
+\begin{equation}
+\Phi = \sum_{\mu=1}^{n_{\mathrm{gen}}} c_\mu \, Q_\mu,
+\quad
+c_\mu = \langle Q_\mu, \Phi \rangle_F
+= \sum_{\vT,\vC} (Q_\mu)_{\vT}^{\vC} \, \Phi_{\vT}^{\vC},
+\label{eq:decomposition}
+\end{equation}
+where $\langle \cdot, \cdot \rangle_F$ denotes the Frobenius inner product summed over all atom tuples and Cartesian indices.
+The elements $Q_\mu$ are the \emph{generators} of the invariant subspace; they encode all symmetry-independent degrees of freedom.
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Permutation Symmetry of Force Constants}
+\label{sec:permutation}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+Interatomic force constants of all orders satisfy an intrinsic permutation symmetry inherited from the mixed-partial-derivative structure of the potential energy~\cite{BornHuang1954,Leibfried1961}:
+\begin{equation}
+\Phi^{\alpha_1 \cdots \alpha_k}_{i_1 \cdots i_k}
+= \Phi^{\alpha_{\pi(1)} \cdots \alpha_{\pi(k)}}_{i_{\pi(1)} \cdots i_{\pi(k)}}
+\qquad \forall\; \pi \in S_k,
+\label{eq:permutation_sym}
+\end{equation}
+where $S_k$ is the symmetric group on $k$ elements.
+This symmetry acts simultaneously on both atom and Cartesian indices.
+
+In practice, Eq.~\eqref{eq:permutation_sym} has two consequences:
+\begin{enumerate}
+\item Only \emph{sorted} atom tuples $i_1 \leq i_2 \leq \cdots \leq i_k$ need to be considered, since any unsorted tuple is related to its sorted version by a permutation.
+\item For a given sorted atom tuple $\vT$, the Cartesian block $B^{(\vT)}$ is only constrained to be symmetric under the subgroup of $S_k$ that stabilizes the atom indices:
+\begin{equation}
+\mathcal{S}_{\vT} = \bigl\{ \pi \in S_k \;\big|\; i_{\pi(j)} = i_j \;\;\forall\, j \bigr\}.
+\label{eq:tuple_stabilizer}
+\end{equation}
+\end{enumerate}
+
+For instance, consider a rank-2 tensor ($k=2$) with $d=3$:
+\begin{itemize}
+\item If $\vT = (a, a)$ (identical atoms), then $\mathcal{S}_{\vT} = S_2$ and $B$ must be a symmetric $3 \times 3$ matrix with $\binom{d+1}{2} = 6$ independent entries.
+\item If $\vT = (a, b)$ with $a \neq b$, then $\mathcal{S}_{\vT} = \{e\}$ is trivial and $B$ is a general $3 \times 3$ matrix with $d^2 = 9$ independent entries.
+\end{itemize}
+
+More generally, the dimension of the $\mathcal{S}_{\vT}$-symmetric Cartesian subspace is
+\begin{equation}
+D_{\mathcal{S}}
+= \prod_{\text{distinct atoms}\; a \;\text{in}\; \vT}
+  \binom{d + m_a - 1}{m_a},
+\label{eq:D_sym}
+\end{equation}
+where $m_a$ is the multiplicity (number of occurrences) of atom $a$ in $\vT$.
+Each factor counts the number of independent components of a symmetric tensor of rank $m_a$ in $d$ dimensions.
+
+In the implementation, the function \texttt{\_get\_tuple\_symmetric\_indices} enumerates a set of $D_{\mathcal{S}}$ orthonormal basis vectors $\{e_i\}_{i=1}^{D_\mathcal{S}}$ for this subspace.
+Each basis vector $e_i$ is constructed by placing equal weight $1/\sqrt{|\mathcal{O}_i|}$ on all Cartesian index tuples $\vC$ belonging to the same symmetry orbit $\mathcal{O}_i$ under the within-group permutations of $\mathcal{S}_{\vT}$.
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Orbit-Stabilizer Decomposition}
+\label{sec:orbit}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+The space group $G$ acts on the set of sorted atom $k$-tuples via
+\begin{equation}
+g \cdot \vT = \mathrm{sort}\bigl(\sigma_g(i_1), \dots, \sigma_g(i_k)\bigr).
+\end{equation}
+This action partitions the set of all sorted tuples into disjoint \emph{orbits}:
+\begin{equation}
+\Omega(\vT) = \bigl\{ g \cdot \vT \;\big|\; g \in G \bigr\}.
+\end{equation}
+The \emph{Little Group} (stabilizer) of $\vT$ is the subgroup of symmetries that map $\vT$ back to a permutation of itself:
+\begin{equation}
+G_{\vT} = \bigl\{ g \in G \;\big|\; \mathrm{sort}(\sigma_g(\vT))
+          \text{ is a permutation of } \vT \bigr\}.
+\label{eq:little_group}
+\end{equation}
+The orbit-stabilizer theorem~\cite{Serre1977,Dresselhaus2008} gives
+\begin{equation}
+|G| = |\Omega(\vT)| \cdot |G_{\vT}|.
+\label{eq:orbit_stabilizer}
+\end{equation}
+
+The key insight is that the global invariant subspace decomposes as a direct sum over orbits:
+\begin{equation}
+\mathcal{V}_G = \bigoplus_{\Omega} \mathcal{V}_{\Omega},
+\end{equation}
+where $\mathcal{V}_{\Omega}$ is spanned by the generators associated with orbit $\Omega$.
+The generators for a given orbit are fully determined by the local invariant subspace at the orbit representative $\vT$; the blocks at other members of the orbit are obtained by applying the appropriate coset symmetries (Sec.~\ref{sec:method2}).
+
+In the implementation, a sorted tuple $\vT$ is called \emph{canonical} if no symmetry maps it to a lexicographically smaller sorted tuple (function \texttt{is\_canonical\_under\_irt}).
+Only canonical tuples are processed; the others are guaranteed to be in the orbit of some already-processed canonical tuple.
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Algorithm: Method I --- Global Symmetrization with Gram-Schmidt}
+\label{sec:method1}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+The first algorithm (\texttt{get\_tensor\_generators}) is a direct approach that iterates over seed tensors and builds generators by symmetrization followed by orthogonalization.
+
+\begin{algorithm}[!ht]
+\caption{Method~I: Global Symmetrization + Gram-Schmidt}
+\label{alg:method1}
+\begin{algorithmic}[1]
+\REQUIRE Symmetry group $G$, cell matrix $A$, rank $k$
+\ENSURE Orthonormal generator set $\{Q_\mu\}$
+\STATE $\{Q_\mu\} \gets \emptyset$
+\FOR{each canonical sorted atom tuple $\vT$}
+  \FOR{each Cartesian seed $\vC$ (skipping redundant permutations)}
+    \STATE Build unit seed tensor $e_{\vT,\vC}$ with permutation copies
+    \STATE $\tilde{e} \gets \text{symmetrize}(e_{\vT,\vC}, G, A)$ \hfill [Eq.~\eqref{eq:symmetrization}]
+    \IF{$\|\tilde{e}\|_F < \epsilon$}
+      \STATE \textbf{continue} \hfill (zero generator, skip)
+    \ENDIF
+    \STATE $\tilde{e} \gets \tilde{e} \,/\, \|\tilde{e}\|_F$ \hfill (normalize)
+    \FOR{each existing generator $Q_\nu$}
+      \STATE $\tilde{e} \gets \tilde{e} - \langle Q_\nu, \tilde{e} \rangle_F \, Q_\nu$ \hfill (Gram-Schmidt)
+    \ENDFOR
+    \IF{$\|\tilde{e}\|_F > \delta$}
+      \STATE $Q_{\text{new}} \gets \tilde{e} \,/\, \|\tilde{e}\|_F$
+      \STATE Add $Q_{\text{new}}$ to $\{Q_\mu\}$
+    \ENDIF
+  \ENDFOR
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+Several optimizations reduce the work:
+
+\paragraph{Canonical tuple selection.}
+The function \texttt{is\_canonical\_under\_irt} checks whether any symmetry $g \in G$ maps $\vT$ to a lexicographically smaller sorted tuple.
+Non-canonical tuples are skipped entirely, since they are in the orbit of a canonical tuple that has already been (or will be) processed.
+
+\paragraph{Cartesian seed filtering.}
+When two consecutive atom indices are equal ($i_j = i_{j+1}$), only seeds with $\alpha_j \leq \alpha_{j+1}$ are kept (\texttt{\_should\_skip\_cartesian}), exploiting the permutation symmetry to avoid generating duplicate seeds.
+
+\paragraph{Compact Gram-Schmidt.}
+Both the symmetrized tensor $\tilde{e}$ and the existing generators $Q_\nu$ are stored in the compact block representation (Sec.~\ref{sec:compact}), so the Gram-Schmidt projections operate on block-dictionaries rather than full $(dN)^k$ tensors.
+
+\paragraph{Symmetrization pipeline.}
+The function \texttt{symmetrize\_tensor!} implements Eq.~\eqref{eq:symmetrization} in three stages:
+(i)~convert the seed from Cartesian to crystal coordinates via Eq.~\eqref{eq:coord_conversion};
+(ii)~accumulate the rotated tensor over all $|G|$ symmetries using Eq.~\eqref{eq:tensor_action} and divide by $|G|$;
+(iii)~convert back to Cartesian coordinates.
+For ranks $k \leq 2$, optimized implementations (\texttt{symmetrize\_fc!} and \texttt{symmetrize\_vector!}) are used instead.
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Algorithm: Method II --- Orbit Decomposition with Local Projection}
+\label{sec:method2}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+The second algorithm (\texttt{get\_tensor\_generators\_fast}) exploits the orbit-stabilizer decomposition (Sec.~\ref{sec:orbit}) to avoid materializing the full $(dN)^k$ tensor entirely.
+The central idea is that, because the global invariant subspace decomposes as a direct sum over orbits $\mathcal{V}_G = \bigoplus_\Omega \mathcal{V}_\Omega$, one can find all generators \emph{independently} for each orbit by solving a small, local projection problem of dimension $D_{\mathcal{S}} \leq d^k$ at the orbit representative.
+The resulting generators are automatically orthogonal across different orbits (their atom-tuple supports are disjoint), so \emph{no Gram-Schmidt orthogonalization is needed}.
+
+This is the fundamental structural difference from Method~I: while Method~I iterates over all Cartesian seed tensors within each canonical atom tuple, symmetrizes each one by constructing and averaging the full $(dN)^k$ tensor, and then applies Gram-Schmidt to remove linear dependencies, Method~II directly identifies the invariant subspace at each orbit representative by diagonalizing a $D_{\mathcal{S}} \times D_{\mathcal{S}}$ matrix---bypassing both the full-tensor construction and the iterative orthogonalization.
+
+We now describe each step in detail.
+
+\subsection{Step 1: Enumerate canonical orbit representatives}
+
+The algorithm iterates over sorted atom tuples, restricting the first index to atom orbit representatives (atoms not related to a previously seen atom by any symmetry).
+Each completed tuple is tested for canonicality.
+
+\subsection{Step 2: Compute the Little Group}
+
+For a canonical tuple $\vT$, the Little Group $G_{\vT}$ [Eq.~\eqref{eq:little_group}] is computed by testing each $g \in G$.
+A symmetry $g$ belongs to $G_{\vT}$ if and only if $\mathrm{sort}(\sigma_g(\vT))$ is a permutation of $\vT$.
+When $g \in G_{\vT}$, the induced Cartesian-index permutation $\pi_g$ is recorded: $\pi_g$ is the permutation such that $\sigma_g(i_{\pi_g(j)}) = (\mathrm{sort}(\sigma_g(\vT)))_j$ for all $j$.
+
+\subsection{Step 3: Build the \texorpdfstring{$\mathcal{S}_{\vT}$}{S\_T}-symmetric Cartesian basis}
+
+The function \texttt{\_get\_tuple\_symmetric\_indices} constructs the $D_{\mathcal{S}}$-dimensional basis $\{e_i\}$ [Eq.~\eqref{eq:D_sym}] of Cartesian blocks that are symmetric under within-atom-group permutations of $\vT$.
+This basis spans all $d^k$ blocks that respect the intrinsic permutation symmetry of force constants [Eq.~\eqref{eq:permutation_sym}] at the given atom tuple.
+The dimension $D_{\mathcal{S}}$ depends only on $d$ and the multiplicities of distinct atoms in $\vT$, and is always at most $d^k$.
+
+\subsection{Step 4: Reynolds operator projection}
+
+For a Little Group element $g \in G_{\vT}$, the action on a $d^k$ Cartesian block at the representative $\vT$ combines the rotation $S$ with the index permutation $\pi_g$:
+\begin{equation}
+(\hat{g} \cdot B)_{\beta_1 \cdots \beta_k}
+= \sum_{\alpha_1 \cdots \alpha_k}
+  \left(\prod_{j=1}^{k} S_{\alpha_j \beta_j}\right)
+  B_{\alpha_{\pi_g(1)} \cdots \alpha_{\pi_g(k)}}.
+\label{eq:block_action}
+\end{equation}
+This uses the same contraction convention $S_{\alpha\beta}$ as the global symmetrization [Eq.~\eqref{eq:tensor_action}], since both operate in crystal coordinates.
+
+The Reynolds operator~\cite{Serre1977,Sturmfels2008} for the Little Group, expressed in the $\{e_i\}$ basis, is the $D_{\mathcal{S}} \times D_{\mathcal{S}}$ matrix
+\begin{equation}
+P_{ij} = \frac{1}{|G_{\vT}|} \sum_{g \in G_{\vT}} \langle e_i,\; \hat{g} \cdot e_j \rangle_F.
+\label{eq:reynolds}
+\end{equation}
+Since $P$ is an orthogonal projector ($P^2 = P$, $P = P^{\mathsf{T}}$), its eigenvalues are 0 or 1.
+The invariant basis is extracted via singular value decomposition (SVD):
+\begin{equation}
+P = U \Sigma V^{\mathsf{T}};
+\qquad
+\text{invariant vectors:}\;
+\{U_{\cdot, i} \;\mid\; \sigma_i > \tfrac{1}{2}\}.
+\label{eq:svd}
+\end{equation}
+The threshold of $1/2$ cleanly separates the eigenvalues near 1 from those near 0.
+The number of invariant vectors equals the rank of $P$, which gives exactly the number of symmetry-independent generators contributed by this orbit.
+
+Each invariant vector $\mathbf{u}$ is converted back to a $d^k$ Cartesian block:
+\begin{equation}
+B_{\mathrm{inv}} = \sum_{i=1}^{D_{\mathcal{S}}} u_i \cdot e_i,
+\label{eq:block_from_svd}
+\end{equation}
+where $e_i$ are the permutation-symmetric basis vectors (each placed entry has weight $1/\sqrt{|\mathcal{O}_i|}$, as described in Sec.~\ref{sec:permutation}).
+Multiple invariant vectors from the same orbit are automatically orthogonal (they are distinct columns of a unitary matrix $U$).
+
+\subsection{Step 5: Propagation to the full orbit}
+
+The invariant block $B_{\mathrm{inv}}$ is in crystal coordinates, since the rotation matrices $S$ are defined in crystal coordinates.
+For each symmetry $g \in G$ that maps $\vT$ to a new orbit member $\vT' = \mathrm{sort}(\sigma_g(\vT))$, the block at $\vT'$ is obtained by:
+\begin{equation}
+B^{(\vT')}_{\mathrm{cryst}} = \text{permute}\bigl(\hat{g} \cdot B_{\mathrm{inv}},\; \pi_{\vT'}\bigr),
+\label{eq:propagation}
+\end{equation}
+where $\hat{g}$ applies the rotation [Eq.~\eqref{eq:block_action}] and $\pi_{\vT'}$ is the permutation that sorts the mapped atom tuple back into non-decreasing order.
+Only the first symmetry mapping $\vT$ to each orbit member is used; subsequent symmetries give the same result (by construction of the invariant subspace).
+
+\subsection{Step 6: Coordinate conversion and permutation expansion}
+
+Two post-processing steps are needed before assembling the final \texttt{Generator}:
+
+\paragraph{Crystal-to-Cartesian conversion.}
+Since the Reynolds operator and propagation are performed in crystal coordinates, all blocks must be converted back to Cartesian coordinates for consistency with the rest of the package.
+Each block is transformed using the inverse of Eq.~\eqref{eq:coord_conversion}:
+\begin{equation}
+B^{(\vT')}_{\mathrm{cart}} = M^{-1} \cdot B^{(\vT')}_{\mathrm{cryst}},
+\label{eq:block_cryst_to_cart}
+\end{equation}
+where $M^{-1} = A^{-1}$ is contracted per-index as in Eq.~\eqref{eq:coord_conversion}, giving $B_{\mathrm{cart}} = A^{-\mathsf{T}} B_{\mathrm{cryst}} A^{-1}$ for rank~2.
+
+\paragraph{Permutation expansion.}
+The orbit propagation only produces blocks at \emph{sorted} atom tuples.
+However, the \texttt{Generator} data structure stores blocks at all permutations of each atom tuple (not just the sorted representative), since the full tensor has entries at all tuples.
+For each sorted tuple $\vT' = (i_1, \ldots, i_k)$ and each permutation $\pi \in S_k$, the block at the permuted tuple $\pi(\vT')$ is obtained by applying the same permutation to the Cartesian indices:
+\begin{equation}
+B^{(\pi(\vT'))}_{\alpha_1 \cdots \alpha_k}
+= B^{(\vT')}_{\alpha_{\pi(1)} \cdots \alpha_{\pi(k)}}.
+\label{eq:perm_expansion}
+\end{equation}
+This ensures that the generator, when reconstructed as a full tensor, satisfies the permutation symmetry of Eq.~\eqref{eq:permutation_sym}.
+
+\begin{algorithm}[!ht]
+\caption{Method~II: Orbit Decomposition + Local Projection}
+\label{alg:method2}
+\begin{algorithmic}[1]
+\REQUIRE Symmetry group $G$, cell matrix $A$, rank $k$
+\ENSURE Orthonormal generator set $\{Q_\mu\}$
+\STATE $\{Q_\mu\} \gets \emptyset$
+\FOR{each canonical sorted atom tuple $\vT$}
+  \STATE Compute Little Group $G_{\vT}$ and permutations $\{\pi_g\}_{g \in G_\vT}$ \hfill [Eq.~\eqref{eq:little_group}]
+  \STATE Build $\mathcal{S}_{\vT}$-symmetric basis $\{e_i\}_{i=1}^{D_\mathcal{S}}$ \hfill [Eq.~\eqref{eq:D_sym}]
+  \STATE Build Reynolds matrix: $P_{ij} \gets \frac{1}{|G_{\vT}|}\sum_{g \in G_{\vT}} \langle e_i,\, \hat{g} \cdot e_j \rangle_F$ \hfill [Eq.~\eqref{eq:reynolds}]
+  \STATE $U, \Sigma, V \gets \text{SVD}(P)$
+  \FOR{each $i$ with $\sigma_i > 1/2$}
+    \STATE $B_{\mathrm{inv}} \gets \sum_j U_{ji}\, e_j$ \hfill [Eq.~\eqref{eq:block_from_svd}]
+    \STATE \textbf{Propagate to orbit:}
+    \FOR{each $g \in G$ with $\vT' = \mathrm{sort}(\sigma_g(\vT)) \notin$ visited}
+      \STATE Rotate: $B_{\mathrm{rot}} \gets \hat{g} \cdot B_{\mathrm{inv}}$ \hfill [Eq.~\eqref{eq:block_action}]
+      \STATE Find $\pi_{\vT'}$ that sorts $\sigma_g(\vT)$
+      \STATE Permute Cartesian indices: $B^{(\vT')}_{\mathrm{cryst}} \gets B_{\mathrm{rot}}$ reindexed by $\pi_{\vT'}$ \hfill [Eq.~\eqref{eq:propagation}]
+    \ENDFOR
+    \STATE Convert all blocks from crystal to Cartesian coords \hfill [Eq.~\eqref{eq:block_cryst_to_cart}]
+    \FOR{each sorted $\vT'$ and each $\pi \in S_k$}
+      \STATE $B^{(\pi(\vT'))} \gets B^{(\vT')}$ with Cartesian indices permuted by $\pi$ \hfill [Eq.~\eqref{eq:perm_expansion}]
+    \ENDFOR
+    \STATE Assemble $Q_{\text{new}}$ from all $\{(\vT', B^{(\vT')})\}$, normalize
+    \STATE Add $Q_{\text{new}}$ to $\{Q_\mu\}$
+  \ENDFOR
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Kronecker product formulation of block operations}
+\label{sec:kronecker}
+
+A na\"ive implementation of the block rotation [Eq.~\eqref{eq:block_action}] performs $k$ sequential per-dimension contractions, each iterating over all $d^k$ elements with a runtime-length multi-index.
+In a dynamically typed or JIT-compiled language such as Julia, the splatted indexing \texttt{block[idx...]} with a runtime-length vector \texttt{idx} incurs dynamic dispatch overhead on every element access, which dominates the cost for moderate block sizes ($d^k = 81$ for $d=3$, $k=4$).
+
+The key observation is that the $k$-fold rotation kernel [Eq.~\eqref{eq:rotation_kernel}] is exactly a Kronecker (tensor) product.
+If we flatten the $d^k$ Cartesian block $B$ into a vector $\mathbf{b} \in \mathbb{R}^{d^k}$ (in column-major order), then the rotation [Eq.~\eqref{eq:block_action}] without the permutation step is
+\begin{equation}
+\mathbf{b}_{\mathrm{rot}}
+= \bigl(S^{\mathsf{T}} \otimes S^{\mathsf{T}} \otimes \cdots \otimes S^{\mathsf{T}}\bigr)\, \mathbf{b},
+\label{eq:kron_rotation}
+\end{equation}
+where $\otimes$ denotes the Kronecker product and the transpose arises from the convention $S_{\alpha\beta}$ in Eq.~\eqref{eq:rotation_kernel} (the Kronecker product naturally gives $S_{\beta\alpha}$, so the transpose is needed to match the per-index convention).
+
+Similarly, the Cartesian-index permutation $\pi_g$ corresponds to a gather operation on the flattened vector:
+\begin{equation}
+(\mathbf{b}_{\mathrm{perm}})_i = (\mathbf{b}_{\mathrm{rot}})_{p(i)},
+\label{eq:gather_perm}
+\end{equation}
+where $p$ is a precomputed permutation map on linear indices that encodes the index reordering $\pi_g$.
+The coordinate conversion [Eq.~\eqref{eq:coord_conversion}] admits the same Kronecker structure:
+\begin{equation}
+\mathbf{b}_{\mathrm{cart}}
+= \bigl(M^{\mathsf{T}} \otimes M^{\mathsf{T}} \otimes \cdots \otimes M^{\mathsf{T}}\bigr)\, \mathbf{b}_{\mathrm{cryst}}.
+\label{eq:kron_conversion}
+\end{equation}
+
+This reformulation replaces the element-wise loops with two operations that are highly optimized on modern hardware:
+\begin{enumerate}
+\item A dense matrix-vector multiply (BLAS \texttt{gemv}) with the precomputed $d^k \times d^k$ Kronecker matrix.
+For $d=3$, $k=4$, this is an $81 \times 81$ matrix-vector product, which BLAS executes in approximately $4\,\mu$s.
+\item A linear-index gather of $d^k$ elements, which costs approximately $0.15\,\mu$s.
+\end{enumerate}
+In the Reynolds operator [Eq.~\eqref{eq:reynolds}], the Kronecker matrices $S^{\mathsf{T}\otimes k}$ and permutation maps $p_g$ are precomputed once for each element of the Little Group $G_{\vT}$, then reused across all $D_{\mathcal{S}}$ basis vectors.
+The precomputation cost is $O(|G_{\vT}| \cdot d^{2k})$ for the Kronecker matrices and $O(|G_{\vT}| \cdot d^k)$ for the permutation maps; both are amortized over the $D_{\mathcal{S}} \cdot |G_{\vT}|$ iterations of the hot loop.
+
+Table~\ref{tab:kronecker_benchmark} shows the practical impact on three test systems at rank~4 ($d^k = 81$).
+The Kronecker formulation achieves speedups of 30--60$\times$ and allocation reductions of 15$\times$ compared to the sequential per-dimension contraction, while producing identical results to floating-point precision.
+
+\begin{table}[ht]
+\caption{Benchmark comparison for rank-4 generator construction: sequential per-dimension contraction vs.\ Kronecker product formulation.
+Times are wall-clock averages over 3 runs; allocations are per run.}
+\label{tab:kronecker_benchmark}
+\begin{ruledtabular}
+\begin{tabular}{lcccc}
+\textbf{System} & \textbf{Before (s)} & \textbf{After (s)} & \textbf{Speedup} & \textbf{Alloc.\ ratio} \\
+\colrule
+Gold (1 atom)       & 0.22  & 0.008 & 28$\times$ & 9$\times$ \\
+ZnS (2 atoms)       & 3.96  & 0.07  & 59$\times$ & 16$\times$ \\
+Perovskite (5 atoms) & 33.5  & 1.1   & 30$\times$ & 15$\times$ \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+
+\subsection{Comparison of the two methods}
+\label{sec:method_comparison}
+
+Table~\ref{tab:comparison} summarizes the key structural differences between the two algorithms.
+
+\begin{table}[ht]
+\caption{Comparison of Method~I and Method~II.}
+\label{tab:comparison}
+\begin{ruledtabular}
+\begin{tabular}{lll}
+& \textbf{Method I} & \textbf{Method II} \\
+\colrule
+Iteration unit & Cartesian seed & Orbit \\
+Seeds per tuple & up to $D_{\mathcal{S}}$ & 1 pass (all at once) \\
+Full tensor & materialized per seed & never materialized \\
+Symmetrization & all $|G|$ ops on $(dN)^k$ & $|G_{\vT}|$ ops on $d^k$ \\
+Orthogonalization & Gram-Schmidt (iterative) & automatic (SVD) \\
+Cross-orbit orthog. & free (disjoint support) & free (disjoint support) \\
+Within-orbit orthog. & Gram-Schmidt & SVD columns \\
+Coordinate work & full tensor conv. & block-level conv. \\
+\end{tabular}
+\end{ruledtabular}
+\end{table}
+
+The most important difference is in how linearly independent generators are identified.
+Method~I tries each Cartesian seed one at a time: it symmetrizes the seed (which requires materializing and averaging the full $(dN)^k$ tensor over all $|G|$ symmetries), normalizes the result, and then projects out the components along all previously accepted generators via Gram-Schmidt.
+If the residual is nonzero, a new generator has been found.
+This process may test up to $D_{\mathcal{S}}$ seeds per canonical tuple, most of which may be rejected as linearly dependent on already-found generators.
+
+Method~II, by contrast, finds \emph{all} generators for a given orbit in a single pass.
+It constructs the $D_{\mathcal{S}} \times D_{\mathcal{S}}$ Reynolds matrix $P$, whose rank equals the number of independent generators for that orbit.
+The SVD of $P$ simultaneously yields all invariant vectors as orthogonal columns of $U$, with no iterative search needed.
+The key computational savings are:
+\begin{enumerate}
+\item The Reynolds matrix $P$ involves only $|G_{\vT}|$ symmetry applications on $d^k$-dimensional blocks, not $|G|$ applications on $(dN)^k$ tensors.
+By the orbit-stabilizer theorem, $|G_{\vT}| = |G|/|\Omega(\vT)| \leq |G|$, so the per-orbit work is strictly less.
+\item No Gram-Schmidt step is needed: orthogonality within each orbit comes from the SVD, and orthogonality across orbits is guaranteed by the disjoint atom-tuple support.
+\item The full $(dN)^k$ tensor is never allocated.
+Only $d^k$ working blocks are needed during the projection, plus the final compact \texttt{Generator} storage.
+\end{enumerate}
+
+Both methods produce the same generator basis (up to orthogonal rotations within each orbit's invariant subspace) and are validated to agree to floating-point precision (Sec.~\ref{sec:validation}).
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Compact Generator Representation}
+\label{sec:compact}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+Rather than storing each generator as a full $(dN)^k$ tensor, we use a sparse block representation (the \texttt{Generator} struct):
+\begin{equation}
+Q_\mu = \bigl\{
+  (\vT^{(t)},\; B^{(t)})
+\bigr\}_{t=1}^{n_{\mathrm{targets}}},
+\quad
+\text{with } B^{(t)} \in \mathbb{R}^{d \times \cdots \times d}\; (k \text{ times}).
+\label{eq:generator_struct}
+\end{equation}
+Only atom tuples $\vT^{(t)}$ where the block $B^{(t)}$ is nonzero (above a threshold $\sim 10^{-15}$) are stored.
+This reduces memory from $O((dN)^k)$ per generator to $O(n_{\mathrm{targets}} \cdot d^k)$.
+
+\paragraph{Reconstruction.}
+A full tensor is reconstructed from generators and coefficients by scatter-adding:
+\begin{equation}
+\Phi_{\vT}^{\vC}
+= \sum_{\mu} c_\mu \sum_{t : \vT^{(t)} = \vT}
+  (Q_\mu)^{(t)}_{\vC}.
+\label{eq:reconstruction}
+\end{equation}
+
+\paragraph{Projection.}
+The expansion coefficients are obtained by the Frobenius inner product with each generator:
+\begin{equation}
+c_\mu = \sum_{t=1}^{n_{\mathrm{targets}}}
+  \sum_{\vC} (Q_\mu)^{(t)}_{\vC} \, \Phi_{\vT^{(t)}}^{\vC}.
+\label{eq:projection}
+\end{equation}
+
+\paragraph{Block-level Gram-Schmidt.}
+In Method~I, the Gram-Schmidt orthogonalization is performed entirely at the block-dictionary level:
+\begin{align}
+\langle Q_\mu, Q_\nu \rangle_F &= \sum_{\vT} \sum_{\vC} B_\mu^{(\vT,\vC)} B_\nu^{(\vT,\vC)}, \label{eq:block_dot} \\
+Q_\mu &\gets Q_\mu - \langle Q_\nu, Q_\mu \rangle_F \, Q_\nu. \label{eq:block_gs}
+\end{align}
+Only atom tuples present in both generators contribute to the inner product, making this operation efficient when generators are sparse (few nonzero blocks).
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Comparison with Existing Approaches}
+\label{sec:comparison}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+\subsection{The eigentensor method of \textsc{hiphive}}
+
+The \textsc{hiphive} package~\cite{Eriksson2019,Fransson2020} also employs an orbit decomposition to construct a symmetry-reduced basis for force constants.
+Its approach can be summarized as follows:
+\begin{enumerate}
+\item \emph{Cluster enumeration.} Atomic clusters (pairs, triplets, etc.)\ within specified cutoff radii are enumerated and grouped into orbits under the space group.
+\item \emph{Eigentensor construction.} For each orbit representative (prototype cluster), the symmetry constraints from the stabilizer subgroup are formulated as a matrix equation on the flattened $d^k$-dimensional block. The independent solutions, found via eigenvalue decomposition, are called \emph{eigentensors}.
+\item \emph{Orbit propagation.} Eigentensors for non-prototype clusters are obtained by rotating those of the prototype using the symmetry that maps prototype to target.
+\item \emph{Regression.} The eigentensor coefficients are determined by fitting DFT forces from displaced configurations.
+\end{enumerate}
+
+A key implementation choice in \textsc{hiphive} is the use of \emph{scaled coordinates} (crystal coordinates normalized by lattice constants), in which the rotation matrices have integer entries. This ensures exact arithmetic and maximizes sparsity in the constraint matrices.
+
+Our Method~II shares the orbit-decomposition philosophy but differs in several respects:
+\begin{itemize}
+\item By default, we process \emph{all} atom tuples, appropriate for the dense tensor representation used in non-perturbative lattice dynamics. An optional distance cutoff (Sec.~\ref{sec:cutoff}), inspired by \textsc{hiphive}'s cluster enumeration, enables the same $r_c$-based pruning for sparse representations.
+\item We use the Reynolds operator (projection + SVD) rather than formulating explicit constraint equations.
+\item Our compact \texttt{Generator} data structure stores the full orbit (all nonzero blocks), enabling direct reconstruction and projection without re-applying symmetry operations.
+\item We work in floating-point crystal coordinates throughout, relying on the SVD threshold for numerical robustness rather than integer arithmetic.
+\end{itemize}
+
+Our Method~I (Gram-Schmidt) has no counterpart in \textsc{hiphive}, which does not support a brute-force global enumeration mode.
+
+\subsection{\textsc{TDEP}}
+
+The Temperature-Dependent Effective Potential method~\cite{Hellman2011,Hellman2013,Hellman2013cubic,Knoop2024tdep} identifies the \emph{irreducible representation} of force constants by analyzing point-group, translational, and permutation symmetries.
+The symmetry analysis determines which tensor components are independent, related by symmetry, or forced to zero.
+The independent parameters are then fit to forces from molecular dynamics.
+TDEP's symmetry reduction is conceptually similar to our orbit decomposition but is implemented as a direct classification of parameters rather than via projection operators.
+
+\subsection{Compressive sensing approaches}
+
+CSLD~\cite{Zhou2019csld} formulates symmetry and sum rules as linear constraints on the full force-constant vector and uses $L_1$-regularized regression to exploit sparsity. This approach avoids explicit basis construction but requires the constraint matrix to fit in memory, which can be prohibitive for high-rank tensors in large supercells.
+
+\subsection{Phonopy and Phono3py}
+
+Phonopy~\cite{Togo2015phonopy,Togo2023phonopy} and Phono3py~\cite{Togo2015phono3py,Togo2023implementation} use a finite-displacement approach where site symmetry is exploited to reduce the number of required displacements, but they do not construct an explicit symmetry-adapted basis for the full tensor.
+The modified group projector technique~\cite{Damnjanovic2015} provides a related algebraic framework for symmetry-adapted bases in lattice dynamics.
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Complexity Analysis}
+\label{sec:scaling}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+We analyze the computational cost of both methods, focusing on the dominant terms.
+
+\paragraph{Method~I.}
+Let $n_{\text{canon}}$ be the number of canonical atom tuples and $n_{\text{cart}}$ the number of Cartesian seeds per tuple (at most $d^k$, reduced by permutation filtering).
+Each seed requires:
+(i)~converting the seed tensor to crystal coordinates: $O(N^k \cdot d^{k+1})$;
+(ii)~symmetrization over $|G|$ operations, each costing $O(N^k \cdot d^{2k})$, for a total of $O(|G| \cdot N^k \cdot d^{2k})$;
+(iii)~converting back to Cartesian: same as (i);
+(iv)~Gram-Schmidt projection against $n_{\text{gen}}$ existing generators, costing $O(n_{\text{gen}} \cdot n_{\text{targets}} \cdot d^k)$ per projection.
+
+The total cost is dominated by step (ii):
+\begin{equation}
+\text{Method~I:}\quad O\bigl(n_{\text{canon}} \cdot d^k \cdot |G| \cdot N^k \cdot d^{2k}\bigr).
+\end{equation}
+
+\paragraph{Method~II.}
+For each canonical tuple $\vT$:
+(i)~computing $G_{\vT}$ costs $O(|G| \cdot k)$;
+(ii)~building the Reynolds matrix $P$ requires $|G_{\vT}|$ applications of $\hat{g}$ on $D_{\mathcal{S}}$ basis vectors.
+With the Kronecker product formulation (Sec.~\ref{sec:kronecker}), each application costs $O(d^{2k})$ via a single BLAS matrix-vector multiply, plus $O(d^k)$ for the gather permutation.
+The precomputation of the $|G_{\vT}|$ Kronecker matrices costs $O(|G_{\vT}| \cdot d^{2k})$ and is amortized over all basis vectors.
+The projection back onto the basis costs $O(D_{\mathcal{S}}^2 \cdot |G_{\vT}| \cdot d^k)$;
+(iii)~SVD of the $D_{\mathcal{S}} \times D_{\mathcal{S}}$ matrix: $O(D_{\mathcal{S}}^3)$;
+(iv)~orbit propagation: $O(|G| \cdot d^{2k})$ per invariant vector (again using a single Kronecker multiply per symmetry).
+
+Since $D_{\mathcal{S}} \leq d^k$ and is independent of $N$, the per-orbit cost is $O(|G_{\vT}| \cdot d^{3k})$ for the projection and $O(|G| \cdot d^{2k})$ for propagation.
+The key advantage is that $d^k$ is constant for a given rank, so no $(dN)^k$ tensor is ever materialized:
+\begin{equation}
+\text{Method~II:}\quad O\bigl(n_{\text{canon}} \cdot |G| \cdot d^{2k}\bigr).
+\end{equation}
+Note that the asymptotic scaling is unchanged compared to a sequential per-dimension implementation (which costs $O(k \cdot d^{k+1})$ per application, also $O(d^{2k})$ since $k \cdot d^{k+1} \leq d^{2k}$ for $k \geq 2$), but the Kronecker formulation achieves a much smaller constant factor by delegating the inner loop to BLAS (Sec.~\ref{sec:kronecker}).
+
+\paragraph{Memory.}
+Method~I requires $O(n_{\text{gen}} \cdot n_{\text{targets}} \cdot d^k)$ for the generator cache (compact blocks).
+Method~II requires only $O(d^k)$ working memory for the projection step, plus $O(n_{\text{gen}} \cdot n_{\text{targets}} \cdot d^k)$ for the final generator storage.
+In neither case is the full $(dN)^k$ tensor allocated during the generator search.
+The full tensor is only materialized during the symmetrization step of Method~I (via the \texttt{Generator} constructor), which is $O((dN)^k)$ per seed; Method~II avoids this cost entirely.
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Distance-Based Cutoff Filtering}
+\label{sec:cutoff}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+For large supercells, the number of sorted atom $k$-tuples grows as $O(N^k / k!)$, making the generator search expensive even when the resulting invariant subspace is sparse.
+In practice, most physical interactions are short-ranged: anharmonic IFCs decay rapidly with interatomic distance, so atom tuples containing distant pairs contribute negligible tensor elements.
+Following the cluster-space filtering strategy of \textsc{hiphive}~\cite{Eriksson2019,Fransson2020}, we introduce an optional distance cutoff that skips atom tuples with any pairwise distance exceeding a threshold $r_c$, dramatically reducing computation time while retaining all physically relevant generators.
+
+\subsection{Pairwise distance matrix}
+
+Given atomic positions $\mathbf{r}_i$ in crystal (fractional) coordinates and the cell matrix $A$, a symmetric $N \times N$ distance matrix $D$ is precomputed using the minimum-image convention:
+\begin{equation}
+D_{ij} = \bigl\| A \cdot \tilde{\boldsymbol{\delta}}_{ij} \bigr\|,
+\qquad
+\tilde{\delta}_{ij}^{(\alpha)} = \delta_{ij}^{(\alpha)} - \mathrm{round}\bigl(\delta_{ij}^{(\alpha)}\bigr),
+\label{eq:min_image_dist}
+\end{equation}
+where $\boldsymbol{\delta}_{ij} = \mathbf{r}_i - \mathbf{r}_j$ is the fractional displacement and $\mathrm{round}(\cdot)$ wraps each component to the interval $[-\tfrac{1}{2}, \tfrac{1}{2}]$.
+The multiplication by $A$ converts the wrapped fractional displacement to Cartesian coordinates for the physical distance.
+This is the same minimum-image convention used in \texttt{get\_irt!} for atom-permutation detection (implemented in \texttt{symmetries\_core.jl}).
+
+\subsection{Tuple filtering criterion}
+
+An atom $k$-tuple $\vT = (i_1, \ldots, i_k)$ is retained only if \emph{all} pairwise distances are within the cutoff:
+\begin{equation}
+\max_{1 \leq p < q \leq k} D_{i_p i_q} \leq r_c.
+\label{eq:cutoff_criterion}
+\end{equation}
+This is the ``complete-graph'' criterion: the atoms in the tuple must form a cluster whose diameter (maximum pairwise distance) does not exceed $r_c$.
+This matches the convention of \textsc{hiphive}, where each tensor rank accepts one cutoff value and all $\binom{k}{2}$ pairwise distances within the cluster must satisfy the constraint.
+
+Setting $r_c = \infty$ recovers the full (uncutoff) generator set, providing a smooth interface for both dense and sparse tensor representations.
+
+\subsection{Integration with both methods}
+
+The cutoff is implemented as an optional keyword argument (\texttt{cutoff}) accepted by both \texttt{get\_tensor\_generators} (Method~I) and \texttt{get\_tensor\_generators\_fast} (Method~II).
+The user must also supply the crystal-coordinate positions via the \texttt{positions} keyword.
+
+\paragraph{Method~I.}
+After the canonicality check and before the Cartesian-seed loop, the full tuple is tested against Eq.~\eqref{eq:cutoff_criterion}.
+If the tuple fails, it is skipped and the algorithm advances to the next sorted tuple.
+
+\paragraph{Method~II.}
+The cutoff is integrated into the recursive tuple-building function \texttt{\_iterate\_sorted\_from!} with \emph{incremental pruning}: at each recursion level $p$, the newly placed atom $i_p$ is checked against all previously placed atoms $i_1, \ldots, i_{p-1}$:
+\begin{equation}
+D_{i_j, i_p} \leq r_c \qquad \forall\; j \in \{1, \ldots, p-1\}.
+\label{eq:incremental_cutoff}
+\end{equation}
+If any pair violates the cutoff, the entire subtree rooted at this partial tuple is pruned (the recursion does not descend further).
+This is the key optimization: for rank~3 with $N = 64$ atoms and a nearest-neighbor cutoff, the pruning eliminates most of the $O(N^3)$ search space at the first recursion level, since most atom pairs are beyond the cutoff in a large supercell.
+
+\paragraph{Complexity reduction.}
+Let $n_c$ denote the average number of atoms within the cutoff distance of any given atom.
+With the incremental pruning, the number of tuples explored by Method~II scales as $O(N \cdot n_c^{k-1})$ rather than $O(N^k / k!)$.
+For short-range cutoffs ($n_c \ll N$), this represents a dramatic reduction, especially at high ranks.
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Validation}
+\label{sec:validation}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+Both algorithms are validated in the test suite of \textsc{AtomicSymmetries.jl}.
+The key tests include:
+
+\begin{enumerate}
+\item \emph{Rank-2 consistency.} For a PbTe $2\times2\times2$ supercell (16~atoms, 48-dimensional tensor), the number of generators from \texttt{get\_tensor\_generators} (Method~I) matches the legacy \texttt{get\_matrix\_generators}, and the project--reconstruct round-trip recovers the symmetrized tensor to within $10^{-8}$.
+\item \emph{Rank-3 generators.} For zinc-blende GaAs (F$\bar{4}$3m, non-centrosymmetric), rank-3 generators are found (centrosymmetric structures correctly yield zero generators for odd $k$), and the project--reconstruct round-trip is verified.
+\item \emph{Rotated FCC $4\times4\times4$ supercell.} An FCC primitive cell is subjected to a random rotation so that no lattice vector aligns with any Cartesian axis, then expanded to a $4\times4\times4$ supercell (64~atoms, $n=192$).
+A random symmetric matrix is projected onto the rank-2 generators and reconstructed; the result is compared with direct symmetrization via \texttt{symmetrize\_fc!}.
+Agreement to $10^{-8}$ confirms that the generators form a complete basis and that the coordinate-conversion pipeline is correct for oblique cells.
+\item \emph{Method~I vs.\ Method~II cross-validation.} For a PbTe unit cell (non-orthogonal, 2~atoms), both \texttt{get\_tensor\_generators} and \texttt{get\_tensor\_generators\_fast} are run at rank~2.
+The test verifies that (i)~both methods find the same number of generators, and (ii)~projecting a random symmetric matrix onto the Method~II generators and reconstructing it gives the same result as direct symmetrization via \texttt{symmetrize\_fc!}, to within $10^{-8}$.
+This test is particularly sensitive to coordinate-conversion and permutation-expansion correctness in Method~II, since PbTe has a non-orthogonal (rhombohedral) cell.
+\item \emph{Idempotency.} Symmetrizing a rank-3 tensor twice yields the same result, confirming that $\bar\Phi$ is a projector.
+\item \emph{Distance cutoff.} For a PbTe $2\times2\times2$ supercell (16~atoms), the cutoff functionality is validated through five checks:
+(i)~setting $r_c = \infty$ yields the same number of generators as the uncutoff call, confirming that the cutoff path does not alter the algorithm when inactive;
+(ii)~a finite nearest-neighbor cutoff produces strictly fewer generators, confirming that tuples are being pruned;
+(iii)~projecting a random symmetric matrix onto the cutoff generators, reconstructing, and re-symmetrizing yields the same tensor, confirming that the cutoff generators span a valid subspace of the full invariant space;
+(iv)~Method~I and Method~II with the same cutoff produce the same number of generators;
+(v)~passing \texttt{cutoff} without \texttt{positions} raises an \texttt{ArgumentError}.
+\end{enumerate}
+
+
+% ═══════════════════════════════════════════════════════════════════════════════
+\section{Summary}
+\label{sec:summary}
+% ═══════════════════════════════════════════════════════════════════════════════
+
+We have presented a rigorous framework for constructing the symmetry-independent generator basis of rank-$k$ tensors in crystalline systems, based on the orbit-stabilizer decomposition of atom tuples under the space group.
+Two complementary algorithms were described:
+Method~I performs global symmetrization of seed tensors with Gram-Schmidt orthogonalization using a compact block representation;
+Method~II constructs local invariant bases at each orbit representative via the Reynolds operator and propagates them by coset symmetries, avoiding the materialization of the full $(dN)^k$ tensor entirely.
+
+Both methods are implemented in the Julia package \textsc{AtomicSymmetries.jl} and validated against direct symmetrization for rank 2 and 3 on systems including randomly rotated FCC supercells with up to 64~atoms.
+The compact \texttt{Generator} data structure enables efficient reconstruction, projection, and contraction operations that scale with the number of nonzero blocks rather than the full tensor size.
+
+An optional distance-based cutoff, inspired by the cluster-space filtering of \textsc{hiphive}~\cite{Eriksson2019,Fransson2020}, allows skipping atom tuples whose maximum pairwise distance exceeds a threshold~$r_c$.
+This reduces the number of tuples explored from $O(N^k)$ to $O(N \cdot n_c^{k-1})$, where $n_c$ is the average coordination number within the cutoff, enabling efficient generator construction for large supercells with short-range interactions.
+In Method~II, the cutoff is integrated as incremental pruning in the recursive tuple enumeration, eliminating entire subtrees of the search space at early recursion levels.
+
+Compared with the eigentensor approach of \textsc{hiphive}~\cite{Eriksson2019}, our methods use the Reynolds operator instead of explicit constraint equations and store pre-propagated generators for direct use in downstream calculations.
+By default, all atom tuples are processed (appropriate for dense tensor representations in non-perturbative lattice dynamics), but the optional cutoff enables the same sparse-interaction paradigm when needed.
+
+\begin{acknowledgments}
+We acknowledge the use of Spglib~\cite{Togo2024spglib} for symmetry detection.
+\end{acknowledgments}
+
+\bibliography{references}
+
+\end{document}

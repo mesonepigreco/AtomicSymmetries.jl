@@ -109,3 +109,25 @@ include("test_general_interface.jl")
     test_rotate_centroid_real()
     test_rotate_centroid_identity()
 end
+
+include("test_efficient_generators.jl")
+include("test_fcc_supercell_generators.jl")
+@testset "Efficient generators" begin
+    test_index_helpers()
+    test_apply_symmetry_tensor()
+    test_rank2_consistency()
+    test_rank3_generators()
+    test_contraction()
+    test_compact_reconstruction()
+    test_fast_vs_standard_generators()
+    test_cutoff_generators()
+    test_fcc_444_rotated_generators()
+end
+
+include("test_ensemble_average.jl")
+@testset "Ensemble average" begin
+    test_ensemble_rank2()
+    test_ensemble_rank3()
+    test_ensemble_rank4()
+    test_streaming_api()
+end
