@@ -24,14 +24,8 @@ and the operation applies the symmetry rotation plus the atom permutation:
 operation additionally permutes q-points according to the symmetry:
 
 ```math
-\vec v'_{\text{irt}[a]}(q') = e^{-2\pi i\, q'\cdot \vec v}\, S\, \vec v_{a}(q), \qquad q' = S^{-T} q
+\vec v'_{\text{irt}[a]}(q') = S\, \vec v_{a}(q), \qquad q' = S^{-T} q
 ```
-
-where ``\vec v`` is the fractional translation of the symmetry. Since the
-vectors in q space follow the atomic-position phase gauge (see
-[`vector_r2q!`](@ref)), whenever ``S^{-T}q`` is folded back into the q grid by
-a reciprocal lattice vector ``\vec G``, the additional phase
-``e^{2\pi i \vec G\cdot \vec\tau_{\text{irt}[a]}}`` is applied.
 
 To symmetrize a vector (average over all symmetries), call this function for
 each symmetry and average the result. That is equivalent to what
@@ -114,17 +108,11 @@ function rotate_vector!(new_vector :: AbstractMatrix{Complex{T}}, old_vector :: 
                          reshape(old_vector, n_dims, :),
                          cell, reciprocal_vectors, false; q_space=false)
 
-        # Apply the matrix (with the phase factors of the atomic-position gauge)
-        translation = nothing
-        if sym_index <= length(symmetry_group.symmetries.translations)
-            translation = symmetry_group.symmetries.translations[sym_index]
-        end
+        # Apply the matrix
         apply_symmetry_vectorq!(new_vector, tmp_vector, symmetry_group[sym_index], symmetry_group.symmetries.irt[sym_index],
                                 symmetry_group.irt_q[sym_index];
-                                positions=symmetry_group.positions,
-                                q_points=symmetry_group.q_points,
-                                translation=translation,
-                                buffer=buffer)
+                                unit_cell_translations=symmetry_group.symmetries.unit_cell_translations[sym_index],
+                                q_points=symmetry_group.q_points)
         tmp_vector .= new_vector
 
         # Convert back to cartesian
@@ -152,10 +140,13 @@ coordinates and back is handled internally.
 The operation performed is a second-rank tensor rotation:
 
 ```math
-M' = S^\top\, M\, S
+M' = O\, M\, O^\top
 ```
 
-where ``S`` is the symmetry rotation matrix (in crystal coordinates).
+where ``O = A S A^{-1}`` is the Cartesian rotation, ``A`` is the cell matrix,
+and ``S`` is the symmetry rotation in crystal coordinates. This is the same
+active rotation used for vectors, so rotating ``v v^\top`` gives
+``(O v)(O v)^\top``.
 
 Since an intensive matrix is q-independent, both the `Symmetries` and
 `SymmetriesQSpace` dispatches perform exactly the same operation
@@ -196,26 +187,12 @@ avg ./= n_sym  # symmetrized stress tensor
 function rotate_matrix!(new_matrix :: AbstractMatrix{T}, old_matrix :: AbstractMatrix{T}, cell :: Matrix{T},
         reciprocal_vectors :: Matrix{T}, symmetry_group :: Symmetries, sym_index :: Int; buffer=default_buffer()) where T
 
-    n_dims = get_dimensions(symmetry_group)
-
-    @no_escape buffer begin
-        tmp_matrix = @alloc(T, n_dims, n_dims)
-        work = @alloc(T, n_dims, n_dims)
-
-        # Convert to crystal: treat as a single-atom (n_atoms=1) block
-        cart_cryst_matrix_conversion!(tmp_matrix, old_matrix, cell; cart_to_cryst=true, buffer=buffer)
-
-        # Apply rotation: new = S' * old_cryst * S
-        sym_mat = symmetry_group.symmetries[sym_index]
-        mul!(work, tmp_matrix, sym_mat)
-        mul!(new_matrix, sym_mat', work)
-
-        # new_matrix is now in crystal coords, convert back to cartesian
-        tmp_matrix .= new_matrix
-        cart_cryst_matrix_conversion!(new_matrix, tmp_matrix, cell; cart_to_cryst=false, buffer=buffer)
-
-        nothing
-    end
+    # Rotate a Cartesian rank-two tensor in the same active direction as vectors.
+    # In particular, rotating v*v' must give (O*v)*(O*v)'.
+    rotation = cell * symmetry_group.symmetries[sym_index] / cell
+    work = rotation * old_matrix
+    mul!(new_matrix, work, rotation')
+    nothing
 end
 function rotate_matrix!(new_matrix :: AbstractMatrix{T}, old_matrix :: AbstractMatrix{T}, cell :: Matrix{T},
         reciprocal_vectors :: Matrix{T}, symmetry_group :: SymmetriesQSpace, sym_index :: Int; buffer=default_buffer()) where T
@@ -247,19 +224,16 @@ symmetry and the atom indices are permuted according to `irt`:
 
 **Q-space version** — the matrix has size ``(n_\text{modes}, n_\text{modes}, n_q)``.
 In addition to the block-wise rotation and atom permutation, the q-point is
-also permuted:
+also permuted and phase factors from fractional translations are included:
 
 ```math
 D'_{\text{irt}[a],\, \text{irt}[b]}(q')
-= S^\top\, D_{a b}(q)\, S, \qquad q' = S^{-T} q
+= e^{2\pi i\, q \cdot (\vec t_a - \vec t_b)}\,
+  S^\top\, D_{a b}(q)\, S
 ```
 
-Since the matrix in q space follows the atomic-position phase gauge (see
-[`matrix_r2q!`](@ref)), no phase factor from the fractional translations
-appears; however, whenever ``S^{-T}q`` is folded back into the q grid by a
-reciprocal lattice vector ``\vec G``, the folding phase
-``e^{2\pi i\, \vec G \cdot (\vec\tau_{\text{irt}[a]} - \vec\tau_{\text{irt}[b]})}``
-is applied (see [`apply_symmetry_matrixq!`](@ref)).
+where ``q' = S^{-T} q`` and ``\vec t_a`` are the unit-cell translations
+that bring the symmetry-transformed atom back into the primitive cell.
 
 To symmetrize a dynamical matrix, call this function for each symmetry and
 average the result. That is equivalent to what `symmetrize_fc!` (real space)
@@ -333,12 +307,12 @@ function rotate_dynamical_matrix!(new_matrix :: AbstractArray{Complex{T}, 3}, ol
         # Convert Cartesian -> crystal (3D version loops over q-slices)
         cart_cryst_matrix_conversion!(tmp_matrix, old_matrix, cell; cart_to_cryst=true, buffer=buffer)
 
-        # Apply symmetry (handles atom + q-point permutation + folding phase factors)
+        # Apply symmetry (handles atom + q-point permutation + phase factors)
         apply_symmetry_matrixq!(new_matrix, tmp_matrix,
                                 symmetry_group[sym_index],
                                 symmetry_group.symmetries.irt[sym_index],
                                 symmetry_group.irt_q[sym_index],
-                                symmetry_group.positions,
+                                symmetry_group.symmetries.unit_cell_translations[sym_index],
                                 symmetry_group.q_points;
                                 buffer=buffer)
 
@@ -432,13 +406,13 @@ function rotate_centroid!(new_centroid :: AbstractVector{T}, old_centroid :: Abs
                            cell; buffer=buffer)
 
         # Apply the symmetry with translation
-        apply_sym_centroid!(transformed_centroid, tmp_centroid, 
-                           symmetry_group.symmetries[sym_index], 
-                           n_dims, 
+        apply_sym_centroid!(transformed_centroid, tmp_centroid,
+                           symmetry_group.symmetries[sym_index],
+                           n_dims,
                            symmetry_group.irt[sym_index];
                            translation=translation,
                            buffer=buffer)
-        
+
         # Apply unit cell translations to bring transformed positions into the primitive cell
         # uct[:, i] is the lattice vector for atom i's transformation, which lands at slot irt[i]
         irt = symmetry_group.irt[sym_index]
@@ -448,11 +422,150 @@ function rotate_centroid!(new_centroid :: AbstractVector{T}, old_centroid :: Abs
             end_index = n_dims * j
             @views transformed_centroid[start_index : end_index] .-= symmetry_group.unit_cell_translations[sym_index][:, i]
         end
-       
+
         # Convert back to cartesian coordinates
         get_cartesian_coords!(reshape(new_centroid, n_dims, :),
                              reshape(transformed_centroid, n_dims, :),
                              cell)
+
+        nothing
+    end
+end
+
+
+# =====================================================================
+#  Tau-gauge (atomic-position phase) general interface
+#
+#  These functions dispatch on SymmetriesQSpaceTau and use the tau-gauge
+#  apply functions (apply_symmetry_vectorq_tau!, apply_symmetry_matrixq_tau!)
+#  which include G-folding phases.
+# =====================================================================
+
+@doc raw"""
+    rotate_vector_tau!(new_vector :: AbstractMatrix{Complex{T}}, old_vector :: AbstractMatrix{Complex{T}},
+            cell :: Matrix{T}, reciprocal_vectors :: Matrix{T},
+            symmetry_group :: SymmetriesQSpaceTau, sym_index :: Int; buffer=default_buffer())
+
+Apply a **single** symmetry operation on a vector in q space, using the
+atomic-position phase gauge (tau-gauge, see [`apply_symmetry_vectorq_tau!`](@ref)).
+
+The vector must be provided in Cartesian coordinates; the conversion to crystal
+coordinates and back is handled internally.
+
+```math
+v'_{s(a)}(S^{-T}\vec q) = e^{-2\pi i (S^{-T}\vec q)\cdot \vec v}\, S\, v_a(\vec q)
+```
+
+Whenever ``S^{-T}\vec q`` is folded back into the q grid by a reciprocal lattice
+vector ``\vec G``, the additional phase ``e^{2\pi i \vec G\cdot \vec\tau_{s(a)}}``
+is applied.
+
+## Parameters
+
+- `new_vector` : Output rotated vector (modified in-place)
+- `old_vector` : Input vector to be rotated
+- `cell` : Primitive cell matrix (lattice vectors as columns)
+- `reciprocal_vectors` : Reciprocal lattice vectors (column-wise)
+- `symmetry_group` : The tau-gauge symmetry group (`SymmetriesQSpaceTau`)
+- `sym_index` : Index of the symmetry operation to apply
+- `buffer` : Optional Bumper.jl buffer for stack allocations
+"""
+function rotate_vector_tau!(new_vector :: AbstractMatrix{Complex{T}}, old_vector :: AbstractMatrix{Complex{T}},
+        cell :: Matrix{T}, reciprocal_vectors :: Matrix{T},
+        symmetry_group :: SymmetriesQSpaceTau, sym_index :: Int; buffer=default_buffer()) where T
+
+    n_q = size(new_vector, 2)
+    n_dims = get_dimensions(symmetry_group)
+    n_modes = size(new_vector, 1)
+    n_atoms = n_modes ÷ n_dims
+    new_vector .= zero(Complex{T})
+
+    @no_escape buffer begin
+        tmp_vector = @alloc(Complex{T}, n_modes, n_q)
+
+        # Convert to crystal
+        cryst_cart_conv!(reshape(tmp_vector, n_dims, :),
+                         reshape(old_vector, n_dims, :),
+                         cell, reciprocal_vectors, false; q_space=false)
+
+        # Apply the matrix (with the phase factors of the atomic-position gauge)
+        translation = nothing
+        if sym_index <= length(symmetry_group.symmetries.translations)
+            translation = symmetry_group.symmetries.translations[sym_index]
+        end
+        apply_symmetry_vectorq_tau!(new_vector, tmp_vector, symmetry_group[sym_index], symmetry_group.symmetries.irt[sym_index],
+                                symmetry_group.irt_q[sym_index];
+                                positions=symmetry_group.positions,
+                                q_points=symmetry_group.q_points,
+                                translation=translation,
+                                buffer=buffer)
+        tmp_vector .= new_vector
+
+        # Convert back to cartesian
+        cryst_cart_conv!(reshape(new_vector, n_dims, :),
+                         reshape(tmp_vector, n_dims, :),
+                         cell, reciprocal_vectors, true; q_space=false)
+        nothing
+    end
+end
+
+
+@doc raw"""
+    rotate_dynamical_matrix_tau!(new_matrix :: AbstractArray{Complex{T}, 3}, old_matrix :: AbstractArray{Complex{T}, 3}, cell :: Matrix{T},
+            reciprocal_vectors :: Matrix{T},
+            symmetry_group :: SymmetriesQSpaceTau, sym_index :: Int; buffer=default_buffer()) where T
+
+Apply a **single** symmetry operation on a dynamical matrix in q space, using the
+atomic-position phase gauge (tau-gauge, see [`apply_symmetry_matrixq_tau!`](@ref)).
+
+The matrix must be provided in Cartesian coordinates; the conversion to crystal
+coordinates and back is handled internally.
+
+```math
+D'_{\text{irt}[a],\, \text{irt}[b]}(q')
+= S^\top\, D_{a b}(q)\, S, \qquad q' = S^{-T} q
+```
+
+When ``S^{-T}q`` is folded back by a reciprocal lattice vector ``\vec G``,
+the folding phase ``e^{2\pi i\, \vec G \cdot (\vec\tau_{\text{irt}[a]} - \vec\tau_{\text{irt}[b]})}``
+is applied.
+
+## Parameters
+
+- `new_matrix` : Output rotated matrix (modified in-place)
+- `old_matrix` : Input matrix to be rotated
+- `cell` : Primitive cell matrix (lattice vectors as columns)
+- `reciprocal_vectors` : Reciprocal lattice vectors (column-wise)
+- `symmetry_group` : The tau-gauge symmetry group (`SymmetriesQSpaceTau`)
+- `sym_index` : Index of the symmetry operation to apply
+- `buffer` : Optional Bumper.jl buffer for stack allocations
+"""
+function rotate_dynamical_matrix_tau!(new_matrix :: AbstractArray{Complex{T}, 3}, old_matrix :: AbstractArray{Complex{T}, 3}, cell :: Matrix{T},
+        reciprocal_vectors :: Matrix{T}, symmetry_group :: SymmetriesQSpaceTau, sym_index :: Int; buffer=default_buffer()) where T
+
+    n_dims = get_dimensions(symmetry_group)
+    n_modes = size(old_matrix, 1)
+    n_q = size(old_matrix, 3)
+    new_matrix .= zero(Complex{T})
+
+    @no_escape buffer begin
+        tmp_matrix = @alloc(Complex{T}, n_modes, n_modes, n_q)
+
+        # Convert Cartesian -> crystal (3D version loops over q-slices)
+        cart_cryst_matrix_conversion!(tmp_matrix, old_matrix, cell; cart_to_cryst=true, buffer=buffer)
+
+        # Apply symmetry (handles atom + q-point permutation + folding phase factors)
+        apply_symmetry_matrixq_tau!(new_matrix, tmp_matrix,
+                                symmetry_group[sym_index],
+                                symmetry_group.symmetries.irt[sym_index],
+                                symmetry_group.irt_q[sym_index],
+                                symmetry_group.positions,
+                                symmetry_group.q_points;
+                                buffer=buffer)
+
+        # Convert crystal -> Cartesian
+        tmp_matrix .= new_matrix
+        cart_cryst_matrix_conversion!(new_matrix, tmp_matrix, cell; cart_to_cryst=false, buffer=buffer)
 
         nothing
     end

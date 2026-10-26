@@ -109,3 +109,7 @@ include("test_general_interface.jl")
     test_rotate_centroid_real()
     test_rotate_centroid_identity()
 end
+
+@testset "Q-space and coset regressions" begin
+    include("test_qspace_regressions.jl")
+end

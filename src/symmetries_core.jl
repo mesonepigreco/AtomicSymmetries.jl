@@ -540,11 +540,11 @@ function initialize_uc_translations!(sym :: Symmetries{T},
                                 sym.symmetries[i],
                                 sym.dimension,
                                 sym.irt[i];
-                                translations = sym.translations[i],
+                                translation = sym.translations[i],
                                 buffer=buffer)
             for k in 1:nat
-                @views tmp_vector[ndims * (k-1)+1:ndims*k]  .-= crystal_coordinates[:, sym.irt[i][k]]
-                @views sym.unit_cell_translations[i][:, k] .= tmp_vector[ndims * (k-1)+1:ndims*k] 
+                target = sym.irt[i][k]
+                @views sym.unit_cell_translations[i][:, k] .= tmp_vector[ndims*(target-1)+1:ndims*target] .- crystal_coordinates[:, target]
             end
         end
         nothing
